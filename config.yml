@@ -1,0 +1,4 @@
+prefect:
+  deployments:
+    - type_spec: name_of_flow
+      uuid: someuuidtobegenerated
