@@ -1,0 +1,9 @@
+prefect
+pyFAI
+h5py
+fabio
+numpy
+Pillow
+scipy
+matplotlib
+pyyaml
