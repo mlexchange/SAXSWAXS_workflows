@@ -2,6 +2,53 @@ import fabio
 import numpy as np
 import prefect
 import pyFAI
+from calibration import pix_to_alpha_f, pix_to_theta_f, q_parallel, q_z
+
+
+def vert_cut(
+    image, xpos, ypos, a_i, cut_half_width, ymin, ymax, sdd, wl, pix_size, unit
+):
+    cut_range = 2 * cut_half_width
+    cut = np.zeros(ymax - ymin)
+    pix = np.arange(ymin, ymax) - ypos
+    for i in range(0, cut_range):
+        temp_cut = image[
+            ymin:ymax, xpos - cut_half_width + i : xpos - cut_half_width + (i + 1)
+        ]
+        cut += temp_cut.flatten()
+    errors = np.sqrt(cut)
+    af = pix_to_alpha_f(pix, sdd, pix_size, a_i)
+    qz = q_z(wl, af, a_i)
+    if unit == "q":
+        return np.column_stack((qz, cut, errors))
+    elif unit == "angle":
+        return np.column_stack((af, cut, errors))
+    elif unit == "pixel":
+        return np.column_stack((pix + ypos, cut, errors))
+
+
+# To extract a cut in horizontal direction on the detector with width=2*cut_half_width
+def horz_cut(
+    image, xpos, ypos, a_i, cut_half_width, xmin, xmax, sdd, wl, pix_size, unit
+):
+    cut_range = 2 * cut_half_width
+    cut = np.zeros(xmax - xmin)
+    pix = np.arange(xmin, xmax) - xpos
+    for i in range(0, cut_range):
+        temp_cut = image[
+            ypos - cut_half_width + i : ypos - cut_half_width + (i + 1), xmin:xmax
+        ]
+        cut += temp_cut.flatten()
+    errors = np.sqrt(cut)
+    af = pix_to_alpha_f(ypos + cut_half_width, sdd, pix_size, a_i)
+    tf = pix_to_theta_f(pix, sdd, pix_size)
+    qp = q_parallel(wl, tf, af, a_i)
+    if unit == "q":
+        return np.column_stack((qp, cut, errors))
+    elif unit == "angle":
+        return np.column_stack((tf, cut, errors))
+    elif unit == "pixel":
+        return np.column_stack((pix + xpos, cut, errors))
 
 
 @prefect.task
