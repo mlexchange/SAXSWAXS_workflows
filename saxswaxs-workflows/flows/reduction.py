@@ -1,4 +1,3 @@
-import fabio
 import numpy as np
 import prefect
 import pyFAI
@@ -52,28 +51,10 @@ def horz_cut(
 
 
 @prefect.task
-def integrate(masked_image, pos_data, mask, bins, solid_angles=None, error_model=None):
+def integrate(masked_image, pos_data, bins, error_model=None):
     """
-    masked_image is in q-space
+    Integrate data values over given position data and number of bins
     """
-    # Actually throw away the masked indices
-    masked_image = masked_image[mask]
-
-    if solid_angles is not None:
-        masked_image /= solid_angles
-
-    old_masked_image = list(masked_image[:])
-
-    # additional mask for NaNs
-    deleteList = []
-    for i in range(len(pos_data)):
-        if np.isnan(old_masked_image[i]):
-            deleteList.append(False)
-        else:
-            deleteList.append(True)
-
-    masked_image = masked_image[np.array(deleteList)]
-    pos_data = pos_data[np.array(deleteList)]
 
     # initialize pyFAI setting for uncertainty estimation
     if error_model == "data variance":
@@ -92,7 +73,7 @@ def integrate(masked_image, pos_data, mask, bins, solid_angles=None, error_model
         histogram = pyFAI.ext.histogram
 
     # x is q, y is intensity, weight_cything
-    x, y, weight_cython, unweight_cython = histogram.histogram(
+    x, y, _, unweight_cython = histogram.histogram(
         pos_data, masked_image, bins, empty=np.nan
     )
 
@@ -113,10 +94,34 @@ def integrate(masked_image, pos_data, mask, bins, solid_angles=None, error_model
     return x, y, sigma
 
 
+@prefect.task
+def mask_image(image, mask):
+    """
+    Creates a masked array from and image and a masked, setting masked positions to NaN.
+
+    Parameters
+    ----------
+    image : numpy.ndarray
+        Input (detector) image
+    mask : sequence or numpy.ndarray
+        Mask. True indicates a masked (i.e. invalid) data.
+
+
+    Returns
+    -------
+    numpy.ma.MaskedArray
+
+    """
+    masked_image = np.ma.masked_array(image, mask)
+    masked_image = masked_image.astype("float32")
+    masked_image[masked_image.mask] = np.nan
+    return masked_image
+
+
 @prefect.flow(name="saxs_waxs_integration")
 def pyfai_reduction(
     image,
-    mask_path,
+    mask,
     beamcenter_x,
     beamcenter_y,
     sdd,
@@ -131,13 +136,10 @@ def pyfai_reduction(
     bins,
     profile,
 ):
-    if mask_path == "None":
-        masked_image = image
+    if mask is not None:
+        masked_image = mask_image(image, mask)
     else:
-        mask = fabio.open(mask_path).data
-        masked_image = np.ma.masked_array(image, mask)
-        masked_image = masked_image.astype("float32")
-        masked_image[masked_image.mask] = np.nan
+        masked_image = image
 
     bc_x = beamcenter_x
     bc_y = (
@@ -151,6 +153,8 @@ def pyfai_reduction(
     # geom_BOOL = True
     # polarization correction (factor may be different, also changes intensity)
     # pol_BOOL = True
+    # (more relevant for magnetic measurements)
+    # close to 1 means unpolarized
     # TODO: Make a paramater
     pol_factor = 0.99
 
@@ -180,7 +184,6 @@ def pyfai_reduction(
 
     # polar angles in relation to beam center
     # (used to cut out cake piece and create mask)
-    chia = ai.chiArray(masked_image.shape)
     chia = np.rad2deg(ai.chiArray(masked_image.shape))
     chia[chia < 0] += 360
 
@@ -196,31 +199,38 @@ def pyfai_reduction(
     if chi1 < chi0:
         chia[(chia >= 0) & (chia <= chi1)] += 360
         if tilt == 0.0:
-            mask = (chia >= chi0) & (qa > qq0) & (qa < qq1)
+            selected_subset = (chia >= chi0) & (qa > qq0) & (qa < qq1)
         else:
-            mask = chia >= chi0
+            selected_subset = chia >= chi0
     else:
-        mask = (qa > qq0) & (qa < qq1) & (chia >= chi0) & (chia <= chi1)
+        selected_subset = (qa > qq0) & (qa < qq1) & (chia >= chi0) & (chia <= chi1)
 
     # use position encoding depending on integration type
     if profile == "Radial":
-        pos = qa[mask]
+        pos = qa[selected_subset]
     elif profile == "Azimuthal":
-        pos = chia[mask]
-
-    # conversion to sterradian (3d angle, cone, used for normalization on intensity)
-    solid_angles = ai.solidAngleArray(masked_image.shape)[mask]
+        pos = chia[selected_subset]
 
     # normalize for polarization
     Polar_Factor = float(pol_factor)
     masked_image /= ai.polarization(masked_image.shape, Polar_Factor)
 
+    # Actually throw away the masked indices
+    masked_image = masked_image[selected_subset]
+
+    # conversion to sterradian (3d angle, cone, used for normalization on intensity)
+    solid_angles = ai.solidAngleArray(masked_image.shape)[selected_subset]
+    masked_image /= solid_angles
+
+    # Remove masked values
+    valid_indices = ~np.isnan(masked_image)
+    masked_image = masked_image[valid_indices]
+    pos = pos[valid_indices]
+
     # x_F is q or chi (depending on integration type),
     # y_F is intensity and
     # sigma_F are uncertainties in the intensity
     # TODO: make error model a parameter
-    x_F, y_F, sigma_F = integrate(
-        masked_image, pos, mask, bins, solid_angles, "poisson"
-    )
+    x_F, y_F, sigma_F = integrate(masked_image, pos, bins, "poisson")
 
     return np.column_stack((x_F, y_F, sigma_F))
