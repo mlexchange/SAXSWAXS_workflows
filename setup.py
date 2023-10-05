@@ -16,7 +16,7 @@ with open(path.join(here, "requirements.txt")) as requirements_file:
     ]
 
 setup(
-    name="saxswaxs-workflows",
+    name="saxswaxs_workflows",
     version="1.0",
     description="Data analysis workflows for SAXS/WAXS",
     long_description=readme,
