@@ -3,10 +3,17 @@ import os
 import fabio
 import h5py
 import numpy as np
-import prefect
+from dotenv import load_dotenv
+from prefect import task
+
+load_dotenv()
+
+PATH_TO_RESULTS = os.path.join(os.getenv("PATH_TO_DATA"), "processed")
+if not os.path.isdir(PATH_TO_RESULTS):
+    os.mkdir(PATH_TO_RESULTS)
 
 
-@prefect.task
+@task
 def open_pil_image(pil_path, sequence_nr):
     return np.flipud(
         fabio.open(
@@ -19,7 +26,7 @@ def open_pil_image(pil_path, sequence_nr):
     )
 
 
-@prefect.task
+@task
 def open_lambda_image(lambda_path, sequence_nr):
     nexus_files = []
     for file in os.listdir(lambda_path):
@@ -85,7 +92,7 @@ def open_lambda_image(lambda_path, sequence_nr):
     return np.flipud(np.rot90(myimage))
 
 
-@prefect.task
+@task
 def get_ioni_diode_from_fio(path):
     with open(path) as f:
         lines = f.read().splitlines()
@@ -119,6 +126,25 @@ def get_ioni_diode_from_fio(path):
     return res
 
 
-@prefect.task
+@task
 def open_mask(mask_path):
     return fabio.open(mask_path).data
+
+
+# This should be following a standard
+def write_1d_reduction_result(trimmed_input_uri, result_type, data, output_unit):
+    if "raw/" in trimmed_input_uri:
+        trimmed_input_uri = trimmed_input_uri.replace("raw/", "")
+    current_folder = PATH_TO_RESULTS
+    parts = trimmed_input_uri.split("/")
+    for part in parts:
+        current_folder = os.path.join(current_folder, part)
+        if not os.path.isdir(current_folder):
+            os.mkdir(current_folder)
+
+    output_file_path = os.path.join(current_folder, f"{parts[-1]}_{result_type}.h5")
+
+    output_file = h5py.File(output_file_path, "w")
+    output_file.create_dataset(output_unit, data=data[:, 0])
+    output_file.create_dataset("intensity", data=data[:, 1])
+    output_file.create_dataset("errors", data=data[:, 2])
