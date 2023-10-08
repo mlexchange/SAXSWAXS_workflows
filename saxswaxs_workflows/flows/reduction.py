@@ -1,56 +1,158 @@
+import os
+
 import numpy as np
 import prefect
 import pyFAI
-from calibration import pix_to_alpha_f, pix_to_theta_f, q_parallel, q_z
+from conversions import (
+    filter_nans,
+    mask_image,
+    pix_to_alpha_f,
+    pix_to_theta_f,
+    q_parallel,
+    q_z,
+)
+from dotenv import load_dotenv
+from file_handling import write_1d_reduction_result
+from prefect import flow, task
+from tiled.client import from_uri
+
+load_dotenv()
+
+# Initialize the Tiled server
+TILED_URI = os.getenv("TILED_URI")
+TILED_API_KEY = os.getenv("TILED_API_KEY")
+
+client = from_uri(TILED_URI, api_key=TILED_API_KEY)
+TILED_BASE_URI = client.uri
 
 
-def vert_cut(
-    image, xpos, ypos, a_i, cut_half_width, ymin, ymax, sdd, wl, pix_size, unit
+@task
+def pixel_roi_vertical_sum(
+    image,
+    beamcenter_x,
+    beamcenter_y,
+    incident_angle,
+    sdd,
+    wl,
+    pix_size,
+    cut_half_width,
+    ymin,
+    ymax,
+    output_unit,
 ):
-    cut_range = 2 * cut_half_width
-    cut = np.zeros(ymax - ymin)
-    pix = np.arange(ymin, ymax) - ypos
-    for i in range(0, cut_range):
-        temp_cut = image[
-            ymin:ymax, xpos - cut_half_width + i : xpos - cut_half_width + (i + 1)
-        ]
-        cut += temp_cut.flatten()
-    errors = np.sqrt(cut)
-    af = pix_to_alpha_f(pix, sdd, pix_size, a_i)
-    qz = q_z(wl, af, a_i)
-    if unit == "q":
-        return np.column_stack((qz, cut, errors))
-    elif unit == "angle":
-        return np.column_stack((af, cut, errors))
-    elif unit == "pixel":
-        return np.column_stack((pix + ypos, cut, errors))
+    shape = image.shape
+    cut_data = image[
+        max(0, ymin) : min(shape[0], ymax + 1),
+        max(0, beamcenter_x - cut_half_width) : min(
+            shape[1], beamcenter_x + cut_half_width + 1
+        ),
+    ]
+
+    cut_sum = np.sum(cut_data, axis=1)
+    errors = np.sqrt(cut_sum)
+
+    pix = np.arange(ymin, ymax + 1)
+    if output_unit == "pixel":
+        return np.column_stack((pix, cut_sum, errors))
+    else:
+        # Set pixel coordinates in reference to beam center
+        pix = pix - beamcenter_y
+        af = pix_to_alpha_f(pix, sdd, pix_size, incident_angle)
+    if output_unit == "angle":
+        return np.column_stack((af, cut_sum, errors))
+    elif output_unit == "q":
+        qz = q_z(wl, af, incident_angle)
+        return np.column_stack((qz, cut_sum, errors))
 
 
-# To extract a cut in horizontal direction on the detector with width=2*cut_half_width
-def horz_cut(
-    image, xpos, ypos, a_i, cut_half_width, xmin, xmax, sdd, wl, pix_size, unit
+@flow
+def pixel_roi_vertical_sum_tiled(
+    input_uri_data: str,
+    input_uri_mask: str,
+    beamcenter_x: int,
+    beamcenter_y: int,
+    incident_angle: float,
+    sdd: float,
+    wl: float,
+    pix_size: float,
+    cut_half_width: int,
+    ymin: int,
+    ymax: int,
+    output_unit: str,
+    output_key: str,
 ):
+    data = from_uri(TILED_BASE_URI + input_uri_data)[:]
+    mask = from_uri(TILED_BASE_URI + input_uri_mask)[:]
+
+    if data.shape != mask.shape:
+        mask = np.rot90(mask)
+
+    masked_data = mask_image(data, mask)
+
+    reduced_data = pixel_roi_vertical_sum(
+        masked_data,
+        beamcenter_x,
+        beamcenter_y,
+        incident_angle,
+        sdd,
+        wl,
+        pix_size,
+        cut_half_width,
+        ymin,
+        ymax,
+        output_unit,
+    )
+
+    reduced_data = filter_nans(reduced_data)
+
+    trimmed_input_uri_data = input_uri_data.replace(TILED_BASE_URI, "")
+    write_1d_reduction_result(
+        trimmed_input_uri_data, "pixel_roi_vertical_sum", reduced_data, output_unit
+    )
+    # write back to Tiled directory directly
+    # client.write_array(reduced_data, key=output_key)
+
+
+@task
+def pixel_roi_horizontal_sum(
+    image,
+    beamcenter_x,
+    beamcenter_y,
+    incident_angle,
+    sdd,
+    cut_half_width,
+    xmin,
+    xmax,
+    wl,
+    pix_size,
+    output_unit,
+):
+    """
+    Extract a cut in horizontal direction on the detector with width=2*cut_half_width.
+    """
     cut_range = 2 * cut_half_width
     cut = np.zeros(xmax - xmin)
-    pix = np.arange(xmin, xmax) - xpos
+    pix = np.arange(xmin, xmax) - beamcenter_x
     for i in range(0, cut_range):
         temp_cut = image[
-            ypos - cut_half_width + i : ypos - cut_half_width + (i + 1), xmin:xmax
+            beamcenter_y - cut_half_width + i : beamcenter_y - cut_half_width + (i + 1),
+            xmin:xmax,
         ]
         cut += temp_cut.flatten()
+
     errors = np.sqrt(cut)
-    af = pix_to_alpha_f(ypos + cut_half_width, sdd, pix_size, a_i)
+    af = pix_to_alpha_f(beamcenter_y + cut_half_width, sdd, pix_size, incident_angle)
     tf = pix_to_theta_f(pix, sdd, pix_size)
-    qp = q_parallel(wl, tf, af, a_i)
-    if unit == "q":
+    qp = q_parallel(wl, tf, af, incident_angle)
+    if output_unit == "q":
         return np.column_stack((qp, cut, errors))
-    elif unit == "angle":
+    elif output_unit == "angle":
         return np.column_stack((tf, cut, errors))
-    elif unit == "pixel":
-        return np.column_stack((pix + xpos, cut, errors))
+    elif output_unit == "pixel":
+        return np.column_stack((pix + beamcenter_x, cut, errors))
 
 
-@prefect.task
+@task
 def integrate(masked_image, pos_data, bins, error_model=None):
     """
     Integrate data values over given position data and number of bins
@@ -92,30 +194,6 @@ def integrate(masked_image, pos_data, bins, error_model=None):
         sigma = x - x
 
     return x, y, sigma
-
-
-@prefect.task
-def mask_image(image, mask):
-    """
-    Creates a masked array from and image and a masked, setting masked positions to NaN.
-
-    Parameters
-    ----------
-    image : numpy.ndarray
-        Input (detector) image
-    mask : sequence or numpy.ndarray
-        Mask. True indicates a masked (i.e. invalid) data.
-
-
-    Returns
-    -------
-    numpy.ma.MaskedArray
-
-    """
-    masked_image = np.ma.masked_array(image, mask)
-    masked_image = masked_image.astype("float32")
-    masked_image[masked_image.mask] = np.nan
-    return masked_image
 
 
 @prefect.flow(name="saxs_waxs_integration")
