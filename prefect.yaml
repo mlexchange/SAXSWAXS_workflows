@@ -1,0 +1,67 @@
+# Welcome to your prefect.yaml file! You can use this file for storing and managing
+# configuration for deploying your flows. We recommend committing this file to source
+# control along with your flow code.
+
+# Generic metadata about this project
+name: SAXSWAXS_workflows
+prefect-version: 2.13.4
+
+# build section allows you to manage and build docker images
+build:
+
+# push section allows you to manage if and how this project is uploaded to remote locations
+push:
+
+# pull section allows you to provide instructions for cloning this project in remote locations
+pull:
+- prefect.deployments.steps.set_working_directory:
+    directory: 
+      #</Working/Directory/To/Be/Set>
+      /Users/wiebke/Documents/Projects/2023.03-Beamline-733-Autonomous-Data-Collection/SAXSWAXS_workflows
+
+# the deployments section allows you to provide configuration for deploying flows
+deployments:
+- name: default
+  version:
+  tags: []
+  description:
+  entrypoint: saxswaxs_workflows/flows/reduction.py:integrate1d_radial_tiled
+  parameters: {}
+  work_pool:
+    name: reduction-pool
+    work_queue_name:
+    job_variables: {}
+  schedule:
+- name: default
+  version:
+  tags: []
+  description:
+  entrypoint: saxswaxs_workflows/flows/reduction.py:integrate1d_azimuthal_tiled
+  parameters: {}
+  work_pool:
+    name: reduction-pool
+    work_queue_name:
+    job_variables: {}
+  schedule:
+- name: default
+  version:
+  tags: []
+  description:
+  entrypoint: saxswaxs_workflows/flows/reduction.py:pixel_roi_vertical_sum_tiled
+  parameters: {}
+  work_pool:
+    name: reduction-pool
+    work_queue_name:
+    job_variables: {}
+  schedule:
+- name: default
+  version:
+  tags: []
+  description:
+  entrypoint: saxswaxs_workflows/flows/reduction.py:pixel_roi_horizontal_sum_tiled
+  parameters: {}
+  work_pool:
+    name: reduction-pool
+    work_queue_name:
+    job_variables: {}
+  schedule:

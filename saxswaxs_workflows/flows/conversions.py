@@ -1,25 +1,94 @@
 import numpy as np
 from prefect import task
+from pyFAI.azimuthalIntegrator import AzimuthalIntegrator
 
 # Alternative, remeshing at:
 # https://github.com/CFN-softbio/SciAnalysis/XSAnalysis/Data.py#L990
 
 
 @task
+def get_azimuthal_integrator(
+    beamcenter_x,
+    beamcenter_y,
+    wavelength,
+    sample_detector_dist,
+    tilt,
+    rotation,
+    pix_size,
+):
+    """
+    Returns an integrator object for the given Fit2d geometry.
+
+    Parameters
+    ----------
+    beamcenter_x: float
+        x-coordinate of the beamcenter in pixel coordinates
+    beamcenter_y: float
+        y-coordinate of the beamcenter in pixel coordinates
+    wavelength: float
+        Wavelength in Angstrom
+    sample_detector_dist: float
+        Distance between sample and detector in millimeter
+    tilt: float
+        Tilt of the detector in degrees
+    rotation: float
+        Rotation in the tilt plance of the detector in degrees
+    pix_size:
+        Pixel size of the detector in microns
+
+    Returns
+    -------
+    pyFAI.azimuthalIntegrator.AzimuthalIntegrator
+
+    """
+
+    azimuthal_integrator = AzimuthalIntegrator()
+
+    # Convert from angstrom to meter
+    wavelength_m = wavelength * 1e-10
+
+    # pyFAI usually works with a PONI file (Point of normal incedence),
+    # but here we set the geometry parameters directly in the Fit2D format
+    azimuthal_integrator.setFit2D(
+        directDist=sample_detector_dist,
+        centerX=beamcenter_x,
+        centerY=beamcenter_y,
+        tilt=tilt,
+        tiltPlanRotation=rotation,
+        pixelX=pix_size,
+        pixelY=pix_size,
+        wavelength=wavelength_m,
+    )
+
+    return azimuthal_integrator
+
+
+@task
 def filter_nans(data):
     """
-    Remove numpy.nans from 1d reduces data
+    Remove numpy.NaNs from the intensity value of 1d reduced data
+
+    Parameters
+    ----------
+    data : tuple(numpy.ndarray, numpy.ndarray, numpy.ndarray)
+        Tuple with of arrays where the second one represents intensity
+
+    Returns
+    -------
+    tuple(numpy.ndarray, numpy.ndarray, numpy.ndarray)
+
     """
+
     # Find Nan in the intensity
-    isnan = np.where(np.isnan(data[:, 1]))
-    data = np.delete(data, isnan[0], axis=0)
-    return data
+    nan_indices = np.isnan(data[1])
+    cleaned_data = tuple(array[~nan_indices] for array in data)
+    return cleaned_data
 
 
 @task
 def mask_image(image, mask):
     """
-    Creates a masked array from and image and a masked, setting masked positions to NaN.
+    Creates a masked array from an image and a mask, setting masked positions to NaN.
 
     Parameters
     ----------
@@ -33,8 +102,20 @@ def mask_image(image, mask):
     numpy.ma.MaskedArray
 
     """
+    if image.shape != mask.shape:
+        mask = np.rot90(mask)
+
     masked_image = np.ma.masked_array(image, mask, dtype="float32", fill_value=np.nan)
     return masked_image
+
+
+def degrees_to_radians(value):
+    """
+    Maps from an angle value in degrees [0,360] to [-pi, pi]
+    """
+    if value > 180:
+        value -= 360
+    return value * np.pi / 180
 
 
 def angle_to_pix(a, sdd, pix_size):

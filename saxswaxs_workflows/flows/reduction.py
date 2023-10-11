@@ -1,10 +1,10 @@
 import os
 
 import numpy as np
-import prefect
-import pyFAI
 from conversions import (
+    degrees_to_radians,
     filter_nans,
+    get_azimuthal_integrator,
     mask_image,
     pix_to_alpha_f,
     pix_to_theta_f,
@@ -12,8 +12,11 @@ from conversions import (
     q_z,
 )
 from dotenv import load_dotenv
-from file_handling import write_1d_reduction_result
-from prefect import flow, task
+from file_handling import (
+    write_1d_reduction_result_file,
+    write_1d_reduction_result_tiled,
+)
+from prefect import flow, get_run_logger
 from tiled.client import from_uri
 
 load_dotenv()
@@ -25,290 +28,366 @@ TILED_API_KEY = os.getenv("TILED_API_KEY")
 client = from_uri(TILED_URI, api_key=TILED_API_KEY)
 TILED_BASE_URI = client.uri
 
+WRITE_TILED_DIRECTLY = os.getenv("WRITE_TILED_DIRECTLY", False)
 
-@task
+
+@flow(name="vertical-sum")
 def pixel_roi_vertical_sum(
-    image,
+    masked_image,
     beamcenter_x,
     beamcenter_y,
     incident_angle,
-    sdd,
-    wl,
+    sample_detector_dist,
+    wavelength,
     pix_size,
     cut_half_width,
-    ymin,
-    ymax,
+    y_min,
+    y_max,
     output_unit,
 ):
-    shape = image.shape
-    cut_data = image[
-        max(0, ymin) : min(shape[0], ymax + 1),
-        max(0, beamcenter_x - cut_half_width) : min(
-            shape[1], beamcenter_x + cut_half_width + 1
+    shape = masked_image.shape
+
+    y_min = max(0, y_min)
+    y_max = min(shape[0], y_max + 1)
+
+    cut_data = masked_image[
+        y_min:y_max,
+        max(0, int(beamcenter_x) - cut_half_width) : min(
+            shape[1], int(beamcenter_x) + cut_half_width + 1
         ),
     ]
 
     cut_sum = np.sum(cut_data, axis=1)
     errors = np.sqrt(cut_sum)
 
-    pix = np.arange(ymin, ymax + 1)
+    pix = np.arange(y_min, y_max)
     if output_unit == "pixel":
-        return np.column_stack((pix, cut_sum, errors))
+        return (pix, cut_sum, errors)
     else:
         # Set pixel coordinates in reference to beam center
         pix = pix - beamcenter_y
-        af = pix_to_alpha_f(pix, sdd, pix_size, incident_angle)
+        af = pix_to_alpha_f(pix, sample_detector_dist, pix_size, incident_angle)
     if output_unit == "angle":
-        return np.column_stack((af, cut_sum, errors))
+        return (af, cut_sum, errors)
     elif output_unit == "q":
-        qz = q_z(wl, af, incident_angle)
-        return np.column_stack((qz, cut_sum, errors))
+        qz = q_z(wavelength, af, incident_angle)
+        return (qz, cut_sum, errors)
 
 
-@flow
+@flow(name="pixel-roi-vertical-sum-tiled")
 def pixel_roi_vertical_sum_tiled(
     input_uri_data: str,
     input_uri_mask: str,
-    beamcenter_x: int,
-    beamcenter_y: int,
+    beamcenter_x: float,
+    beamcenter_y: float,
     incident_angle: float,
-    sdd: float,
-    wl: float,
+    sample_detector_dist: float,
+    wavelength: float,
     pix_size: float,
     cut_half_width: int,
-    ymin: int,
-    ymax: int,
+    y_min: int,
+    y_max: int,
     output_unit: str,
-    output_key: str,
 ):
-    data = from_uri(TILED_BASE_URI + input_uri_data)[:]
-    mask = from_uri(TILED_BASE_URI + input_uri_mask)[:]
-
-    if data.shape != mask.shape:
-        mask = np.rot90(mask)
-
-    masked_data = mask_image(data, mask)
-
-    reduced_data = pixel_roi_vertical_sum(
-        masked_data,
-        beamcenter_x,
-        beamcenter_y,
-        incident_angle,
-        sdd,
-        wl,
-        pix_size,
-        cut_half_width,
-        ymin,
-        ymax,
-        output_unit,
+    function_parameters = locals().copy()
+    reduction_tiled_wrapper(
+        pixel_roi_vertical_sum,
+        **function_parameters,
     )
 
-    reduced_data = filter_nans(reduced_data)
 
-    trimmed_input_uri_data = input_uri_data.replace(TILED_BASE_URI, "")
-    write_1d_reduction_result(
-        trimmed_input_uri_data, "pixel_roi_vertical_sum", reduced_data, output_unit
-    )
-    # write back to Tiled directory directly
-    # client.write_array(reduced_data, key=output_key)
-
-
-@task
+@flow(name="horizontal-sum")
 def pixel_roi_horizontal_sum(
-    image,
+    masked_image,
     beamcenter_x,
     beamcenter_y,
     incident_angle,
-    sdd,
-    cut_half_width,
-    xmin,
-    xmax,
-    wl,
+    sample_detector_dist,
+    wavelength,
     pix_size,
+    cut_half_width,
+    x_min,
+    x_max,
     output_unit,
 ):
     """
     Extract a cut in horizontal direction on the detector with width=2*cut_half_width.
     """
-    cut_range = 2 * cut_half_width
-    cut = np.zeros(xmax - xmin)
-    pix = np.arange(xmin, xmax) - beamcenter_x
-    for i in range(0, cut_range):
-        temp_cut = image[
-            beamcenter_y - cut_half_width + i : beamcenter_y - cut_half_width + (i + 1),
-            xmin:xmax,
-        ]
-        cut += temp_cut.flatten()
+    shape = masked_image.shape
 
-    errors = np.sqrt(cut)
-    af = pix_to_alpha_f(beamcenter_y + cut_half_width, sdd, pix_size, incident_angle)
-    tf = pix_to_theta_f(pix, sdd, pix_size)
-    qp = q_parallel(wl, tf, af, incident_angle)
-    if output_unit == "q":
-        return np.column_stack((qp, cut, errors))
-    elif output_unit == "angle":
-        return np.column_stack((tf, cut, errors))
-    elif output_unit == "pixel":
-        return np.column_stack((pix + beamcenter_x, cut, errors))
+    x_min = max(0, x_min)
+    x_max = min(shape[1], x_max + 1)
 
+    cut_data = masked_image[
+        max(0, beamcenter_y - cut_half_width) : min(
+            shape[0], beamcenter_y + cut_half_width + 1
+        ),
+        x_min:x_max,
+    ]
 
-@task
-def integrate(masked_image, pos_data, bins, error_model=None):
-    """
-    Integrate data values over given position data and number of bins
-    """
+    cut_sum = np.sum(cut_data, axis=1)
+    errors = np.sqrt(cut_sum)
 
-    # initialize pyFAI setting for uncertainty estimation
-    if error_model == "data variance":
-        VARIANCE = abs(masked_image - masked_image.mean()) ** 2
-    elif error_model == "poisson":
-        VARIANCE = np.ascontiguousarray(masked_image, np.float32)
-    elif error_model == "None":
-        VARIANCE = None
+    pix = np.arange(x_min, x_max + 1)
+
+    if output_unit == "pixel":
+        return (pix, cut_sum, errors)
     else:
-        VARIANCE = None
+        pix = pix - beamcenter_x
+        af = pix_to_alpha_f(
+            beamcenter_y,
+            sample_detector_dist,
+            pix_size,
+            incident_angle,
+        )
+        tf = pix_to_theta_f(pix, sample_detector_dist, pix_size)
+    if output_unit == "angle":
+        return (tf, cut_sum, errors)
+    elif output_unit == "q":
+        qp = q_parallel(wavelength, tf, af, incident_angle)
+        return (qp, cut_sum, errors)
 
-    # backwards compability for PyFAI version
-    if hasattr(pyFAI, "histogram"):
-        histogram = pyFAI.histogram
-    else:
-        histogram = pyFAI.ext.histogram
 
-    # x is q, y is intensity, weight_cything
-    x, y, _, unweight_cython = histogram.histogram(
-        pos_data, masked_image, bins, empty=np.nan
+@flow(name="pixel-roi-horizontal-sum-tiled")
+def pixel_roi_horizontal_sum_tiled(
+    input_uri_data: str,
+    input_uri_mask: str,
+    beamcenter_x: float,
+    beamcenter_y: float,
+    incident_angle: float,
+    sample_detector_dist: float,
+    wavelength: float,
+    pix_size: float,
+    cut_half_width: int,
+    y_min: int,
+    y_max: int,
+    output_unit: str,
+):
+    function_parameters = locals().copy()
+    reduction_tiled_wrapper(
+        pixel_roi_horizontal_sum,
+        **function_parameters,
     )
 
-    if VARIANCE is not None:
-        xx, yy, a, b = histogram.histogram(pos_data, VARIANCE, bins)
-        sigma = np.sqrt(a) / np.maximum(b, 1)
-    else:
-        sigma = x - x
 
-    # mask values with no intensity information due to masking
-    if unweight_cython.min() == 0:
-        y = np.ma.masked_array(y, unweight_cython == 0)
-
-        # for current dpdak version, y cant be an masked array, mask -> nan
-        y = np.ma.filled(y, np.nan)
-        sigma = x - x
-
-    return x, y, sigma
-
-
-@prefect.flow(name="saxs_waxs_integration")
-def pyfai_reduction(
-    image,
-    mask,
+@flow(name="integration-azimuthal")
+def integrate1d_azimuthal(
+    masked_image,
     beamcenter_x,
     beamcenter_y,
-    sdd,
+    sample_detector_dist,
     wavelength,
+    pix_size,
     tilt,
     rotation,
-    pix_size,
-    chi0,
-    chi1,
+    chi_min,
+    chi_max,
     inner_radius,
     outer_radius,
-    bins,
-    profile,
+    polarization_factor,
+    output_unit,  # Always q for now
+    num_bins,
 ):
-    if mask is not None:
-        masked_image = mask_image(image, mask)
-    else:
-        masked_image = image
-
-    bc_x = beamcenter_x
-    bc_y = (
-        masked_image.shape[0] - beamcenter_y
-    )  # due to flipping (depends on flipping while calibrating)
-
-    # Corrections
-    # Either correction only changes intensity, never peak locations
-    # geometry correction (flat to arced, changes intensity)
-    # currently not implemented or applied?
-    # geom_BOOL = True
-    # polarization correction (factor may be different, also changes intensity)
-    # pol_BOOL = True
-    # (more relevant for magnetic measurements)
-    # close to 1 means unpolarized
-    # TODO: Make a paramater
-    pol_factor = 0.99
-
-    # from where to where: 1 to largest possible distance (in pixels)
-    if inner_radius > outer_radius:
-        inner_radius, outer_radius = outer_radius, inner_radius
-
-    # pyFAI Initialization (azimuthal integrator)
-    ai = pyFAI.AzimuthalIntegrator(wavelength=wavelength)
-
-    # pyFAI usually works with a PONI file (Point of normal incedence),
-    # but here we set the geometry parameters directly in the Fit2D format
-    ai.setFit2D(
-        directDist=sdd,
-        centerX=bc_x,
-        centerY=bc_y,
-        tilt=tilt,
-        tiltPlanRotation=rotation,
-        pixelX=pix_size,
-        pixelY=pix_size,
+    azimuthal_integrator = get_azimuthal_integrator(
+        beamcenter_x,
+        beamcenter_y,
+        wavelength,
+        sample_detector_dist,
+        tilt,
+        rotation,
+        pix_size,
     )
 
-    # how much is 1q in pixels (1.578664 = 1/2pi),
-    # comes from definition of q:
-    # real-space -> q-space conversion
-    step_size = (outer_radius - inner_radius) / float(bins) / 1.578664
+    # Convert from [0, 360] degree to [-pi, pi]
+    chi_min_rad = degrees_to_radians(chi_min)
+    chi_max_rad = degrees_to_radians(chi_max)
 
-    # polar angles in relation to beam center
-    # (used to cut out cake piece and create mask)
-    chia = np.rad2deg(ai.chiArray(masked_image.shape))
-    chia[chia < 0] += 360
+    result = azimuthal_integrator.integrate1d(
+        # data=masked_image,
+        data=np.copy(masked_image),
+        npt=num_bins,
+        correctSolidAngle=True,
+        error_model="poisson",
+        radial_range=(inner_radius, outer_radius),
+        azimuth_range=(chi_min_rad, chi_max_rad),
+        polarization_factor=polarization_factor,
+    )
 
-    # qq0 to qq1 are the extremes for integration
-    # (+/- step_size is needed for pyFAI pixel conventions)
-    qq0 = ai.qFunction(np.array([bc_y]), np.array([bc_x + inner_radius - step_size]))
-    qq1 = ai.qFunction(np.array([bc_y]), np.array([bc_x + outer_radius + step_size]))
+    return result
 
-    # complete picture in q
-    qa = ai.qArray(masked_image.shape)
 
-    # chi1 and chi0 are two angles, defining a partial arc / cake cut
-    if chi1 < chi0:
-        chia[(chia >= 0) & (chia <= chi1)] += 360
-        if tilt == 0.0:
-            selected_subset = (chia >= chi0) & (qa > qq0) & (qa < qq1)
-        else:
-            selected_subset = chia >= chi0
+@flow(name="saxs-waxs-azimuthal-integration-tiled")
+def integrate1d_azimuthal_tiled(
+    input_uri_data: str,
+    input_uri_mask: str,
+    beamcenter_x: float,
+    beamcenter_y: float,
+    sample_detector_dist: float,
+    wavelength: float,
+    pix_size: int,
+    tilt: float,
+    rotation: float,
+    chi_min: int,
+    chi_max: int,
+    inner_radius: int,
+    outer_radius: int,
+    polarization_factor: float,
+    num_bins: int,
+    output_unit: str,  # Always q for now
+):
+    function_parameters = locals().copy()
+    reduction_tiled_wrapper(
+        integrate1d_azimuthal,
+        **function_parameters,
+    )
+
+
+@flow(name="integration-radial")
+def integrate1d_radial(
+    masked_image,
+    beamcenter_x,
+    beamcenter_y,
+    sample_detector_dist,
+    wavelength,
+    pix_size,
+    tilt,
+    rotation,
+    chi_min,
+    chi_max,
+    inner_radius,
+    outer_radius,
+    polarization_factor,
+    num_bins,
+    output_unit,  # Always q for now
+):
+    azimuthal_integrator = get_azimuthal_integrator(
+        beamcenter_x,
+        beamcenter_y,
+        wavelength,
+        sample_detector_dist,
+        tilt,
+        rotation,
+        pix_size,
+    )
+
+    # Convert from [0, 360] degree to [-pi, pi]
+    chi_min_rad = degrees_to_radians(chi_min)
+    chi_max_rad = degrees_to_radians(chi_max)
+
+    result = azimuthal_integrator.integrate_radial(
+        # Copying here due to issue with memory ownership
+        # line 323, in pyFAI.ext.splitBBoxCSR.CsrIntegrator.integrate_ng
+        # "ValueError: buffer source array is read-only"
+        data=np.copy(masked_image),
+        # data=masked_image,
+        npt=num_bins,
+        correctSolidAngle=True,
+        radial_range=(inner_radius, outer_radius),
+        azimuth_range=(chi_min_rad, chi_max_rad),
+        polarization_factor=polarization_factor,
+    )
+
+    return result
+
+
+@flow(name="saxs-waxs-radial-integration-tiled")
+def integrate1d_radial_tiled(
+    input_uri_data: str,
+    input_uri_mask: str,
+    beamcenter_x: float,
+    beamcenter_y: float,
+    sample_detector_dist: float,
+    wavelength: float,
+    pix_size: int,
+    tilt: float,
+    rotation: float,
+    chi_min: int,
+    chi_max: int,
+    inner_radius: int,
+    outer_radius: int,
+    polarization_factor: float,
+    num_bins: int,
+    output_unit,  # Always q for now
+):
+    function_parameters = locals().copy()
+    reduction_tiled_wrapper(
+        integrate1d_radial,
+        **function_parameters,
+    )
+
+
+def reduction_tiled_wrapper(
+    function_to_wrap,
+    **function_parameters,
+):
+    logger = get_run_logger()
+
+    input_uri_data = function_parameters["input_uri_data"]
+    function_parameters.pop("input_uri_data")
+    input_uri_mask = function_parameters["input_uri_mask"]
+    function_parameters.pop("input_uri_mask")
+
+    # Retrieve data from Tiled
+    image = from_uri(TILED_BASE_URI + input_uri_data)[:]
+    mask = from_uri(TILED_BASE_URI + input_uri_mask)[:]
+    logger.debug(f"Using image from {image} and mask from {mask}.")
+
+    masked_image = mask_image(image, mask)
+
+    # we may want to check the parameters
+    # function_to_wrap_parameters = inspect.signature(function_to_wrap).parameters
+    # if "image" in function_to_wrap_parameters:
+    #    function_to_wrap_parameters.pop("image")
+
+    # Pass the masked image to the reduction function
+    reduced_data = function_to_wrap(masked_image, **function_parameters)
+
+    reduced_data = filter_nans(reduced_data)
+
+    trimmed_input_uri = input_uri_data
+    if "raw/" in trimmed_input_uri:
+        trimmed_input_uri = trimmed_input_uri.replace("raw/", "")
+
+    logger.debug(
+        f"Saving {function_to_wrap.name} reduction under: processed/{trimmed_input_uri}"
+    )
+
+    if not WRITE_TILED_DIRECTLY:
+        write_1d_reduction_result_file(
+            trimmed_input_uri,
+            function_to_wrap.name,
+            reduced_data,
+            **function_parameters,
+        )
     else:
-        selected_subset = (qa > qq0) & (qa < qq1) & (chia >= chi0) & (chia <= chi1)
+        write_1d_reduction_result_tiled(
+            client["processed"],
+            input_uri_data,
+            function_to_wrap.name,
+            reduced_data,
+            **function_parameters,
+        )
 
-    # use position encoding depending on integration type
-    if profile == "Radial":
-        pos = qa[selected_subset]
-    elif profile == "Azimuthal":
-        pos = chia[selected_subset]
 
-    # normalize for polarization
-    Polar_Factor = float(pol_factor)
-    masked_image /= ai.polarization(masked_image.shape, Polar_Factor)
+parameters_radial = {
+    "input_uri_data": "raw/cali_saxs_agbh_00001/lmbdp03/cali_saxs_agbh_00001",
+    "input_uri_mask": "raw/masks/saxs_mask",
+    "beamcenter_x": 2945,  # x-coordiante of the beam center postion in pixel
+    "beamcenter_y": 900,  # y-coordiante of the beam center postion in pixel
+    "sample_detector_dist": 833.8931,  # sample-detector-distance in mm
+    "pix_size": 55,  # pixel size in microns
+    "wavelength": 1.05,  # wavelength in Angstrom
+    "chi_min": -1.2,
+    "chi_max": 1.2,
+    "inner_radius": 1,
+    "outer_radius": 2900,
+    "polarization_factor": 0.99,
+    "rotation": 49.530048,  # detector rotation in degrees (Fit2D convention)
+    "tilt": 1.688493,  # detector tilt in degrees (Fit2D convention)
+    "num_bins": 1450,
+    "output_unit": "q",
+}
 
-    # Actually throw away the masked indices
-    masked_image = masked_image[selected_subset]
-
-    # conversion to sterradian (3d angle, cone, used for normalization on intensity)
-    solid_angles = ai.solidAngleArray(masked_image.shape)[selected_subset]
-    masked_image /= solid_angles
-
-    # Remove masked values
-    valid_indices = ~np.isnan(masked_image)
-    masked_image = masked_image[valid_indices]
-    pos = pos[valid_indices]
-
-    # x_F is q or chi (depending on integration type),
-    # y_F is intensity and
-    # sigma_F are uncertainties in the intensity
-    # TODO: make error model a parameter
-    x_F, y_F, sigma_F = integrate(masked_image, pos, bins, "poisson")
-
-    return np.column_stack((x_F, y_F, sigma_F))
+if __name__ == "__main__":
+    integrate1d_azimuthal_tiled(**parameters_radial)
+    integrate1d_radial_tiled(**parameters_radial)

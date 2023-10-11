@@ -132,9 +132,9 @@ def open_mask(mask_path):
 
 
 # This should be following a standard
-def write_1d_reduction_result(trimmed_input_uri, result_type, data, output_unit):
-    if "raw/" in trimmed_input_uri:
-        trimmed_input_uri = trimmed_input_uri.replace("raw/", "")
+def write_1d_reduction_result_file(
+    trimmed_input_uri, result_type, data, **function_parameters
+):
     current_folder = PATH_TO_RESULTS
     parts = trimmed_input_uri.split("/")
     for part in parts:
@@ -145,6 +145,40 @@ def write_1d_reduction_result(trimmed_input_uri, result_type, data, output_unit)
     output_file_path = os.path.join(current_folder, f"{parts[-1]}_{result_type}.h5")
 
     output_file = h5py.File(output_file_path, "w")
-    output_file.create_dataset(output_unit, data=data[:, 0])
-    output_file.create_dataset("intensity", data=data[:, 1])
-    output_file.create_dataset("errors", data=data[:, 2])
+
+    # default: q
+    output_unit = "q"
+    for key, value in function_parameters.items():
+        if key == "output_unit":
+            output_unit = value
+        else:
+            output_file.attrs[key] = value
+
+    output_file.create_dataset(output_unit, data=data[0])
+    output_file.create_dataset("intensity", data=data[1])
+    if len(data) > 2:
+        output_file.create_dataset("errors", data=data[2])
+
+
+def write_1d_reduction_result_tiled(
+    processed_client, trimmed_input_uri, result_type, data, **function_parameters
+):
+    parts = trimmed_input_uri.split("/")
+    for part in parts:
+        if part not in processed_client.keys():
+            processed_client.create_container(part)
+        processed_client = processed_client["part"]
+
+    final_container = f"{parts[-1]}_{result_type}"
+
+    # default: q
+    output_unit = "q"
+    if "output_unit" in function_parameters:
+        function_parameters.pop("output_unit")
+
+    processed_client.create_container(key=final_container, meta=function_parameters)
+    processed_client = processed_client[final_container]
+    processed_client.create_array(key=output_unit, array=data[0])
+    processed_client.create_array(key="intensity", array=data[1])
+    if len(data) > 2:
+        processed_client.create_array(key="errors", array=data[2])
