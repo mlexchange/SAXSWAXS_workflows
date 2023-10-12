@@ -5,12 +5,22 @@ import h5py
 import numpy as np
 from dotenv import load_dotenv
 from prefect import task
+from tiled.client import from_uri
 
 load_dotenv()
 
 PATH_TO_RESULTS = os.path.join(os.getenv("PATH_TO_DATA"), "processed")
 if not os.path.isdir(PATH_TO_RESULTS):
     os.mkdir(PATH_TO_RESULTS)
+
+# Initialize the Tiled server
+TILED_URI = os.getenv("TILED_URI")
+TILED_API_KEY = os.getenv("TILED_API_KEY")
+
+client = from_uri(TILED_URI, api_key=TILED_API_KEY)
+TILED_BASE_URI = client.uri
+
+WRITE_TILED_DIRECTLY = os.getenv("WRITE_TILED_DIRECTLY", False)
 
 
 @task
@@ -131,7 +141,13 @@ def open_mask(mask_path):
     return fabio.open(mask_path).data
 
 
+@task
+def read_array_tiled(array_uri):
+    return from_uri(TILED_BASE_URI + array_uri)[:]
+
+
 # This should be following a standard
+@task
 def write_1d_reduction_result_file(
     trimmed_input_uri, result_type, data, **function_parameters
 ):
@@ -160,6 +176,7 @@ def write_1d_reduction_result_file(
         output_file.create_dataset("errors", data=data[2])
 
 
+@task
 def write_1d_reduction_result_tiled(
     processed_client, trimmed_input_uri, result_type, data, **function_parameters
 ):
@@ -182,3 +199,26 @@ def write_1d_reduction_result_tiled(
     processed_client.create_array(key="intensity", array=data[1])
     if len(data) > 2:
         processed_client.create_array(key="errors", array=data[2])
+
+
+def write_1d_reduction_result(
+    input_uri_data, result_type, reduced_data, **function_parameters
+):
+    if not WRITE_TILED_DIRECTLY:
+        trimmed_input_uri = input_uri_data
+        if "raw/" in trimmed_input_uri:
+            trimmed_input_uri = trimmed_input_uri.replace("raw/", "")
+        write_1d_reduction_result_file(
+            trimmed_input_uri,
+            result_type,
+            reduced_data,
+            **function_parameters,
+        )
+    else:
+        write_1d_reduction_result_tiled(
+            client["processed"],
+            input_uri_data,
+            result_type,
+            reduced_data,
+            **function_parameters,
+        )

@@ -1,8 +1,7 @@
-import os
+import inspect
 
 import numpy as np
 from conversions import (
-    degrees_to_radians,
     filter_nans,
     get_azimuthal_integrator,
     mask_image,
@@ -11,24 +10,8 @@ from conversions import (
     q_parallel,
     q_z,
 )
-from dotenv import load_dotenv
-from file_handling import (
-    write_1d_reduction_result_file,
-    write_1d_reduction_result_tiled,
-)
+from file_handling import read_array_tiled, write_1d_reduction_result
 from prefect import flow, get_run_logger
-from tiled.client import from_uri
-
-load_dotenv()
-
-# Initialize the Tiled server
-TILED_URI = os.getenv("TILED_URI")
-TILED_API_KEY = os.getenv("TILED_API_KEY")
-
-client = from_uri(TILED_URI, api_key=TILED_API_KEY)
-TILED_BASE_URI = client.uri
-
-WRITE_TILED_DIRECTLY = os.getenv("WRITE_TILED_DIRECTLY", False)
 
 
 @flow(name="vertical-sum")
@@ -172,7 +155,8 @@ def pixel_roi_horizontal_sum_tiled(
 
 @flow(name="integration-azimuthal")
 def integrate1d_azimuthal(
-    masked_image,
+    image,
+    mask,
     beamcenter_x,
     beamcenter_y,
     sample_detector_dist,
@@ -198,18 +182,14 @@ def integrate1d_azimuthal(
         pix_size,
     )
 
-    # Convert from [0, 360] degree to [-pi, pi]
-    chi_min_rad = degrees_to_radians(chi_min)
-    chi_max_rad = degrees_to_radians(chi_max)
-
     result = azimuthal_integrator.integrate1d(
-        # data=masked_image,
-        data=np.copy(masked_image),
+        data=np.copy(image),
+        mask=mask,
         npt=num_bins,
         correctSolidAngle=True,
         error_model="poisson",
-        radial_range=(inner_radius, outer_radius),
-        azimuth_range=(chi_min_rad, chi_max_rad),
+        # radial_range=(inner_radius, outer_radius),
+        azimuth_range=(chi_min, chi_max),
         polarization_factor=polarization_factor,
     )
 
@@ -244,7 +224,8 @@ def integrate1d_azimuthal_tiled(
 
 @flow(name="integration-radial")
 def integrate1d_radial(
-    masked_image,
+    image,
+    mask,
     beamcenter_x,
     beamcenter_y,
     sample_detector_dist,
@@ -270,20 +251,16 @@ def integrate1d_radial(
         pix_size,
     )
 
-    # Convert from [0, 360] degree to [-pi, pi]
-    chi_min_rad = degrees_to_radians(chi_min)
-    chi_max_rad = degrees_to_radians(chi_max)
-
     result = azimuthal_integrator.integrate_radial(
         # Copying here due to issue with memory ownership
         # line 323, in pyFAI.ext.splitBBoxCSR.CsrIntegrator.integrate_ng
         # "ValueError: buffer source array is read-only"
-        data=np.copy(masked_image),
-        # data=masked_image,
+        data=np.copy(image),
+        mask=mask,
         npt=num_bins,
         correctSolidAngle=True,
-        radial_range=(inner_radius, outer_radius),
-        azimuth_range=(chi_min_rad, chi_max_rad),
+        # radial_range=(inner_radius, outer_radius),
+        azimuth_range=(chi_min, chi_max),
         polarization_factor=polarization_factor,
     )
 
@@ -328,45 +305,29 @@ def reduction_tiled_wrapper(
     function_parameters.pop("input_uri_mask")
 
     # Retrieve data from Tiled
-    image = from_uri(TILED_BASE_URI + input_uri_data)[:]
-    mask = from_uri(TILED_BASE_URI + input_uri_mask)[:]
+    image = read_array_tiled(input_uri_data)
+    mask = read_array_tiled(input_uri_mask)
     logger.debug(f"Using image from {image} and mask from {mask}.")
 
-    masked_image = mask_image(image, mask)
-
     # we may want to check the parameters
-    # function_to_wrap_parameters = inspect.signature(function_to_wrap).parameters
-    # if "image" in function_to_wrap_parameters:
-    #    function_to_wrap_parameters.pop("image")
-
-    # Pass the masked image to the reduction function
-    reduced_data = function_to_wrap(masked_image, **function_parameters)
+    function_to_wrap_parameters = inspect.signature(function_to_wrap).parameters
+    if "masked_image" in function_to_wrap_parameters:
+        masked_image = mask_image(image, mask)
+        # Pass the masked image to the reduction function
+        reduced_data = function_to_wrap(masked_image, **function_parameters)
+    else:
+        reduced_data = function_to_wrap(image, mask, **function_parameters)
 
     reduced_data = filter_nans(reduced_data)
 
-    trimmed_input_uri = input_uri_data
-    if "raw/" in trimmed_input_uri:
-        trimmed_input_uri = trimmed_input_uri.replace("raw/", "")
+    logger.debug(f"Saving {function_to_wrap.name} reduction for: {input_uri_data}")
 
-    logger.debug(
-        f"Saving {function_to_wrap.name} reduction under: processed/{trimmed_input_uri}"
+    write_1d_reduction_result(
+        input_uri_data,
+        function_to_wrap.name,
+        reduced_data,
+        **function_parameters,
     )
-
-    if not WRITE_TILED_DIRECTLY:
-        write_1d_reduction_result_file(
-            trimmed_input_uri,
-            function_to_wrap.name,
-            reduced_data,
-            **function_parameters,
-        )
-    else:
-        write_1d_reduction_result_tiled(
-            client["processed"],
-            input_uri_data,
-            function_to_wrap.name,
-            reduced_data,
-            **function_parameters,
-        )
 
 
 parameters_radial = {
@@ -376,16 +337,16 @@ parameters_radial = {
     "beamcenter_y": 900,  # y-coordiante of the beam center postion in pixel
     "sample_detector_dist": 833.8931,  # sample-detector-distance in mm
     "pix_size": 55,  # pixel size in microns
-    "wavelength": 1.05,  # wavelength in Angstrom
-    "chi_min": -1.2,
-    "chi_max": 1.2,
+    "wavelength": 1.044,  # wavelength in Angstrom
+    "chi_min": -180,
+    "chi_max": 180,
     "inner_radius": 1,
     "outer_radius": 2900,
     "polarization_factor": 0.99,
     "rotation": 49.530048,  # detector rotation in degrees (Fit2D convention)
     "tilt": 1.688493,  # detector tilt in degrees (Fit2D convention)
     "num_bins": 1450,
-    "output_unit": "q",
+    "output_unit": "chi",  # "q"
 }
 
 if __name__ == "__main__":
