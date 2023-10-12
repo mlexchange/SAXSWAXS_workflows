@@ -44,9 +44,6 @@ def get_azimuthal_integrator(
 
     azimuthal_integrator = AzimuthalIntegrator()
 
-    # Convert from angstrom to meter
-    wavelength_m = wavelength * 1e-10
-
     # pyFAI usually works with a PONI file (Point of normal incedence),
     # but here we set the geometry parameters directly in the Fit2D format
     azimuthal_integrator.setFit2D(
@@ -57,7 +54,7 @@ def get_azimuthal_integrator(
         tiltPlanRotation=rotation,
         pixelX=pix_size,
         pixelY=pix_size,
-        wavelength=wavelength_m,
+        wavelength=wavelength,
     )
 
     return azimuthal_integrator
