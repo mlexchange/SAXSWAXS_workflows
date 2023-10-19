@@ -1,4 +1,6 @@
-# Build the deployment definition file flowname-deployment.yaml
-#prefect deployment build ./saxswaxs-workflows/flows/file.py:function -n flowname -q workqeuename
-# Create deployment
-#prefect deployment apply flowname-deployment.yaml
+# Appears not to be necessary
+#prefect config set PREFECT_API_URL=$PREFECT_API_URL
+#prefect deployment ls
+prefect work-pool create reduction-pool --type "process"
+prefect work-pool update reduction-pool --concurrency-limit 1
+prefect deploy --all

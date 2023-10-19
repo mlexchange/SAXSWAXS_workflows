@@ -47,8 +47,8 @@ Within the interface folder (the other repository `/workflow-viz`), follow the i
 
 Adapt the parameters in the example in `reduction.py` to point to a dataset that is contained in the folder and run it
 
-```
-python
+```bash
+python saxswaxs-workflows/flows/reduction.py
 ```
 
 (Later once we confirmed that the first part runs)
@@ -58,4 +58,10 @@ In another terminal, create a work-pool and start a work-pool
 ```bash
 prefect work-pool create reduction-pool
 prefect worker start --pool 'reduction-pool'
+```
+
+Deploy all flows that are defined within `prefect.yaml`
+
+```bash
+prefect deploy --all
 ```

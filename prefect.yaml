@@ -15,13 +15,14 @@ push:
 # pull section allows you to provide instructions for cloning this project in remote locations
 pull:
 - prefect.deployments.steps.set_working_directory:
-    directory: 
+    directory:
+      /app
       #</Working/Directory/To/Be/Set>
-      /Users/wiebke/Documents/Projects/2023.03-Beamline-733-Autonomous-Data-Collection/SAXSWAXS_workflows
+      #/Users/wiebke/Documents/Projects/2023.03-Beamline-733-Autonomous-Data-Collection/SAXSWAXS_workflows
 
 # the deployments section allows you to provide configuration for deploying flows
 deployments:
-- name: default
+- name: integration-radial
   version:
   tags: []
   description:
@@ -32,7 +33,7 @@ deployments:
     work_queue_name:
     job_variables: {}
   schedule:
-- name: default
+- name: integration-azimuthal
   version:
   tags: []
   description:
@@ -43,7 +44,7 @@ deployments:
     work_queue_name:
     job_variables: {}
   schedule:
-- name: default
+- name: vertical-sum
   version:
   tags: []
   description:
@@ -54,7 +55,7 @@ deployments:
     work_queue_name:
     job_variables: {}
   schedule:
-- name: default
+- name: horizontal-sum
   version:
   tags: []
   description:

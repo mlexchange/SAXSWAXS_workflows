@@ -1,9 +1,14 @@
-FROM prefecthq/prefect:2.7.9-python3.10
+FROM python:3.9
 
+# Create and set working directory
 WORKDIR /app
-COPY ./requirements.txt /tmp/
 
-RUN pip install -U pip &&        pip install -r /tmp/requirements.txt
+# Install Python dependencies
+RUN python -m pip install --upgrade pip
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ./ /app
-RUN pip install -e .
+EXPOSE 4200
+
+# Copy the remainder of the code into the image
+COPY . ./

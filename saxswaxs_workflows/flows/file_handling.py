@@ -3,11 +3,13 @@ import os
 import fabio
 import h5py
 import numpy as np
-from dotenv import load_dotenv
-from prefect import task
+
+# from dotenv import load_dotenv
 from tiled.client import from_uri
 
-load_dotenv()
+from prefect import task
+
+# load_dotenv()
 
 PATH_TO_RESULTS = os.path.join(os.getenv("PATH_TO_DATA"), "processed")
 if not os.path.isdir(PATH_TO_RESULTS):
@@ -167,8 +169,7 @@ def write_1d_reduction_result_file(
     for key, value in function_parameters.items():
         if key == "output_unit":
             output_unit = value
-        else:
-            output_file.attrs[key] = value
+        output_file.attrs[key] = value
 
     output_file.create_dataset(output_unit, data=data[0])
     output_file.create_dataset("intensity", data=data[1])
@@ -191,7 +192,7 @@ def write_1d_reduction_result_tiled(
     # default: q
     output_unit = "q"
     if "output_unit" in function_parameters:
-        function_parameters.pop("output_unit")
+        output_unit = function_parameters["output_unit"]
 
     processed_client.create_container(key=final_container, meta=function_parameters)
     processed_client = processed_client[final_container]
@@ -204,10 +205,10 @@ def write_1d_reduction_result_tiled(
 def write_1d_reduction_result(
     input_uri_data, result_type, reduced_data, **function_parameters
 ):
+    trimmed_input_uri = input_uri_data
+    if "raw/" in trimmed_input_uri:
+        trimmed_input_uri = trimmed_input_uri.replace("raw/", "")
     if not WRITE_TILED_DIRECTLY:
-        trimmed_input_uri = input_uri_data
-        if "raw/" in trimmed_input_uri:
-            trimmed_input_uri = trimmed_input_uri.replace("raw/", "")
         write_1d_reduction_result_file(
             trimmed_input_uri,
             result_type,
@@ -217,7 +218,7 @@ def write_1d_reduction_result(
     else:
         write_1d_reduction_result_tiled(
             client["processed"],
-            input_uri_data,
+            trimmed_input_uri,
             result_type,
             reduced_data,
             **function_parameters,

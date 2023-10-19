@@ -1,6 +1,7 @@
 import numpy as np
-from prefect import task
 from pyFAI.azimuthalIntegrator import AzimuthalIntegrator
+
+from prefect import task
 
 # Alternative, remeshing at:
 # https://github.com/CFN-softbio/SciAnalysis/XSAnalysis/Data.py#L990
@@ -135,11 +136,22 @@ def angle_to_pix(a, sdd, pix_size):
 
 
 def pix_to_angle(pixels, sdd, pix_size):
-    """Converts from length in pixel space to angle in degree."""
-    return (
-        np.arctan(pixels * (pix_size / 1000) / (sdd)) / np.pi * 180
-    )  # wl in AA, pix_size in µm and sdd in mm
-    # q in AA^-1
+    """Converts from length in pixel space to angle in degree.
+
+    Parameters
+    ----------
+    pixels : float or numpy.ndarray
+        pixel coordinate(s)
+    sdd : float
+        sample-detector-distance in mm
+    pix_size: float
+        size of one pixel in µm
+
+    Returns
+    -------
+    float or numpy.ndarray
+    """
+    return np.arctan(pixels * (pix_size / 1000) / (sdd)) / np.pi * 180
 
 
 def pix_to_alpha_f(pixels, sdd, pix_size, a_i):

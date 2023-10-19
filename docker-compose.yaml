@@ -1,0 +1,52 @@
+version: '3'
+
+services:
+  prefect-server:
+    container_name: prefect_workflow_server
+    build: .
+    restart: always
+    command: prefect server start --host 0.0.0.0
+    volumes:
+      - ./prefect:/root/.prefect
+    ports:
+      - 4200:4200
+    networks:
+      - workflow_viz_default
+
+  prefect-worker:
+    container_name: prefect_workflow_worker
+    build: .
+    command: prefect worker start --pool 'reduction-pool'
+    environment:
+      PREFECT_API_URL: "http://prefect-server:4200/api"
+      TILED_URI: "http://tiled:8888"
+      TILED_API_KEY: "${TILED_API_KEY}"
+      PATH_TO_DATA: "/data"
+    networks:
+      - workflow_viz_default
+    depends_on:
+      - prefect-cli
+    volumes:
+      - ${PATH_TO_DATA}:/data
+      - ./prefect.yaml:/app/prefect.yaml
+
+  prefect-cli:
+    container_name: prefect-workflow-cli
+    build: .
+    command: bash -c "/app/create_deployments.sh"
+    volumes:
+      - ${PATH_TO_DATA}:/data
+      - ./create_deployments.sh:/app/create_deployments.sh
+    environment:
+      PREFECT_API_URL: "http://prefect-server:4200/api"
+      TILED_API_KEY: ${TILED_API_KEY}
+      TILED_URI: "http://tiled:8888"
+      PATH_TO_DATA: "/data"
+    networks:
+      - workflow_viz_default
+    depends_on:
+      - prefect-server
+
+networks:
+  workflow_viz_default:
+    external: true

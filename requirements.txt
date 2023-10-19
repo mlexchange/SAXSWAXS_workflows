@@ -1,7 +1,8 @@
+silx==1.1.2
 pyFAI==2023.9.0
 h5py==3.9.0
 fabio==2023.6.0
-numpy==1.26.0
+numpy==1.26.1
 Pillow==10.0.1
 scipy==1.11.3
 tiled[client]==0.1.0a106
