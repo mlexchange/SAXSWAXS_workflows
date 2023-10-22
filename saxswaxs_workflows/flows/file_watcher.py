@@ -5,6 +5,7 @@ import sys
 
 import watchgod
 from dotenv import load_dotenv
+
 from prefect import get_client
 
 load_dotenv()
@@ -32,6 +33,16 @@ parameters_azimuthal = {
     "tilt": 0.0,
     "num_bins": 800,
     "output_unit": "q",
+}
+
+parameters_fitting = {
+    "input_file_reduction": "test_integration-azimuthal.h5",
+    "x_peaks": [0],
+    "y_peaks": [1],
+    "stddevs": [0.01],
+    "fwhm_Gs": [0.01],
+    "fwhm_Ls": [0.01],
+    "peak_shape": "gaussian",
 }
 
 

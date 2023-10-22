@@ -11,10 +11,10 @@ from conversions import (
     q_z,
 )
 from file_handling import (
+    open_cbf,
+    open_mask,
     read_array_tiled,
     write_1d_reduction_result,
-    open_mask,
-    open_cbf,
     write_1d_reduction_result_files_file_only,
 )
 
@@ -249,7 +249,7 @@ def integrate1d_azimuthal_files(
     output_unit: str,  # Always q for now
 ):
     function_parameters = locals().copy()
-    reduction_files_wrapper(
+    return reduction_files_wrapper(
         integrate1d_azimuthal,
         **function_parameters,
     )
@@ -392,7 +392,7 @@ def reduction_files_wrapper(
 
     logger.debug(f"Saving {function_to_wrap.name} reduction for: {input_file_data}")
 
-    write_1d_reduction_result_files_file_only(
+    return write_1d_reduction_result_files_file_only(
         input_file_data,
         function_to_wrap.name,
         reduced_data,

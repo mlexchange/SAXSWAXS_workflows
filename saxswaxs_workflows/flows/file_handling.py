@@ -17,11 +17,16 @@ if not os.path.isdir(PATH_TO_RESULTS):
     os.mkdir(PATH_TO_RESULTS)
 
 # Initialize the Tiled server
-TILED_URI = os.getenv("TILED_URI")
+TILED_URI = os.getenv("TILED_URI", "")
 TILED_API_KEY = os.getenv("TILED_API_KEY")
 
-client = from_uri(TILED_URI, api_key=TILED_API_KEY)
-TILED_BASE_URI = client.uri
+try:
+    client = from_uri(TILED_URI, api_key=TILED_API_KEY)
+    TILED_BASE_URI = client.uri
+except Exception as e:
+    print(e)
+    client = None
+    TILED_BASE_URI = ""
 
 WRITE_TILED_DIRECTLY = os.getenv("WRITE_TILED_DIRECTLY", False)
 
@@ -260,6 +265,8 @@ def write_1d_reduction_result_files_file_only(
     parts = input_file.split(os.sep)
     current_folder = ""
     for part in parts:
+        if part == "":
+            continue
         current_folder = os.path.join(current_folder, part)
         if not os.path.isdir(current_folder):
             os.mkdir(current_folder)
@@ -319,14 +326,16 @@ def read_reduction(input_file_path):
 def fio_file_from_scan(input_file_path):
     """
     fio file is located in raw/online/scan_name.fio, when the given file_name is
-    /raw/scan_name/embl_2m/scan_name_id.cbf
+    /raw/scan_name/embl_2m/scan_name_id/
     """
+    input_file_path = os.path.dirname(input_file_path)
+    input_file_path = input_file_path.replace("processed", "raw")
     pattern = re.compile(
-        r"(.*[\\\/]*raw)[\\\/]*([_a-z\d]+)[\\\/]*embl_2m[\\\/]*\2_\d{5}.cbf"
+        r"(.*[\\\/]*raw)[\\\/]*([_a-z\d]+)[\\\/]*embl_2m[\\\/]*\2_\d{5}"
     )
     match = pattern.search(input_file_path)
     if match:
-        fio_file = os.path.join(match.group(1), match.group(2) + ".fio")
+        fio_file = os.path.join(match.group(1), "online", match.group(2) + ".fio")
         return fio_file
     return None
 
@@ -336,7 +345,7 @@ def write_fitting(input_file_path, fitted_x_peaks, fitted_y_peaks, fitted_fwhms)
 
     if not fio_file:
         parameters_single, parameter_columns = get_parameters_from_fio(
-            filepath,
+            fio_file,
             parameter_names=["ELLI_Y", "ELLI_Z"],
             parameter_names_columns=["VFC01", "VFC02", "POS"],
         )

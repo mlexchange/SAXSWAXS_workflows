@@ -149,20 +149,20 @@ def simple_peak_fit(
 
 @flow(name="simple_peak_fit_file")
 def simple_peak_fit_files(
-    input_file, x_peaks, y_peaks, stddevs, fwhm_Gs, fwhm_Ls, peak_shape
+    input_file_reduction, x_peaks, y_peaks, stddevs, fwhm_Gs, fwhm_Ls, peak_shape
 ):
-    x_data, y_data = read_reduction(input_file)
+    x_data, y_data = read_reduction(input_file_reduction)
 
     fitted_x_peaks, fitted_y_peaks, fitted_fwhms = simple_peak_fit(
         x_data, y_data, x_peaks, y_peaks, stddevs, fwhm_Gs, fwhm_Ls, peak_shape
     )
 
-    write_fitting(input_file, fitted_x_peaks, fitted_y_peaks, fitted_fwhms)
+    write_fitting(input_file_reduction, fitted_x_peaks, fitted_y_peaks, fitted_fwhms)
 
 
 if __name__ == "__main__":
     parameters = {
-        "input_file": "test_integration-azimuthal.h5",
+        "input_file_reduction": "test_integration-azimuthal.h5",
         "x_peaks": [0],
         "y_peaks": [1],
         "stddevs": [0.01],
