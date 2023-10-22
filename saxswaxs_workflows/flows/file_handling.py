@@ -3,7 +3,7 @@ import os
 import fabio
 import h5py
 import numpy as np
-
+import pandas as pd
 from dotenv import load_dotenv
 from tiled.client import from_uri
 
@@ -260,3 +260,24 @@ def write_1d_reduction_result(
             reduced_data,
             **function_parameters,
         )
+
+
+def read_reduction(input_file_path):
+    input_file = h5py.File(input_file_path, "r")
+
+    y_data = np.array(input_file["intensity"])
+    x_data = np.array(input_file["q"])
+
+    input_file.close()
+
+    return x_data, y_data
+
+
+def write_fitting(input_file_path, fitted_x_peaks, fitted_y_peaks, fitted_fwhms):
+    df = pd.DataFrame({"x": fitted_x_peaks, "y": fitted_y_peaks, "fwhm": fitted_fwhms})
+
+    output_file_path = input_file_path.replace(
+        "integration_azimuthal.h5", "fitted_peak.csv"
+    )
+
+    df.to_csv(output_file_path, index=False)
