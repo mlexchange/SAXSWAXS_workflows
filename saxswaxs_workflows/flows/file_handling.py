@@ -1,11 +1,10 @@
 import os
+import re
 
 import fabio
 import h5py
 import numpy as np
 import pandas as pd
-import re
-
 from dotenv import load_dotenv
 from tiled.client import from_uri
 
@@ -156,20 +155,20 @@ def get_parameters_from_fio(path, parameter_names, parameter_names_columns):
 
     marker = 0
     line_id = 0
-    with open(path) as f:
-        for line in lines:
+    with open(path) as file:
+        for line in file:
             line_id += 1
             for pattern in parameter_patterns:
-                match = parameter_patterns[1].search(line)
+                match = (pattern[1]).search(line)
                 if match:
-                    parameters[parameter_patterns[0]] = match.group(1)
+                    parameters[pattern[0]] = match.group(1)
             # Check if the line contains a column header
             column_found = line.find("Col")
-            if t == -1:
+            if column_found == -1:
                 pass
             else:
-                marker = i
-                for param in parameter_names:
+                marker = line_id
+                for param in parameter_names_columns:
                     param_found = line.find(param)
                     if param_found == -1:
                         pass
@@ -324,3 +323,15 @@ def write_fitting(input_file_path, fitted_x_peaks, fitted_y_peaks, fitted_fwhms)
     )
 
     df.to_csv(output_file_path, index=False)
+
+
+if __name__ == "__main__":
+    filepath = "example.fio"
+
+    parameters_single, parameter_columns = get_parameters_from_fio(
+        filepath,
+        parameter_names=["ELLI_X", "ELLI_Y"],
+        parameter_names_columns=["VFC01", "VFC02", "POS"],
+    )
+    print(parameters_single)
+    print(parameter_columns)
