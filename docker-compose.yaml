@@ -3,6 +3,7 @@ version: '3'
 services:
   prefect-server:
     container_name: prefect_workflow_server
+    image: saxswaxs_workflows
     build: .
     restart: always
     command: prefect server start --host 0.0.0.0
@@ -15,7 +16,7 @@ services:
 
   prefect-worker:
     container_name: prefect_workflow_worker
-    build: .
+    image: saxswaxs_workflows
     command: prefect worker start --pool 'reduction-pool'
     environment:
       PREFECT_API_URL: "http://prefect-server:4200/api"
@@ -32,7 +33,7 @@ services:
 
   prefect-cli:
     container_name: prefect-workflow-cli
-    build: .
+    image: saxswaxs_workflows
     command: bash -c "/app/create_deployments.sh"
     volumes:
       - ${PATH_TO_DATA}:/data
