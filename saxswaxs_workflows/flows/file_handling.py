@@ -4,6 +4,8 @@ import fabio
 import h5py
 import numpy as np
 import pandas as pd
+import re
+
 from dotenv import load_dotenv
 from tiled.client import from_uri
 
@@ -141,6 +143,47 @@ def get_ioni_diode_from_fio(path):
     res = np.column_stack((ioni, diode))
 
     return res
+
+
+def get_parameters_from_fio(path, parameter_names, parameter_names_columns):
+    parameter_patterns = [
+        (param, re.compile(param + r"\s*=\s*([-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?)"))
+        for param in parameter_names
+    ]
+
+    parameters = dict()
+    parameter_columns = dict()
+
+    marker = 0
+    line_id = 0
+    with open(path) as f:
+        for line in lines:
+            line_id += 1
+            for pattern in parameter_patterns:
+                match = parameter_patterns[1].search(line)
+                if match:
+                    parameters[parameter_patterns[0]] = match.group(1)
+            # Check if the line contains a column header
+            column_found = line.find("Col")
+            if t == -1:
+                pass
+            else:
+                marker = i
+                for param in parameter_names:
+                    param_found = line.find(param)
+                    if param_found == -1:
+                        pass
+                    else:
+                        # Assume single digit column number
+                        parameter_columns[param] = int(line[5:6]) - 1
+
+    for param in parameter_names_columns:
+        if param in parameter_columns:
+            column_id = parameter_columns[param]
+            param_values = np.genfromtxt(path, skip_header=marker, usecols=column_id)
+            parameter_columns[param] = param_values
+
+    return parameters, parameter_columns
 
 
 @task
