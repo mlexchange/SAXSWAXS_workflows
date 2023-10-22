@@ -4,12 +4,12 @@ import fabio
 import h5py
 import numpy as np
 
-# from dotenv import load_dotenv
+from dotenv import load_dotenv
 from tiled.client import from_uri
 
 from prefect import task
 
-# load_dotenv()
+load_dotenv()
 
 PATH_TO_RESULTS = os.path.join(os.getenv("PATH_TO_DATA"), "processed")
 if not os.path.isdir(PATH_TO_RESULTS):
@@ -23,6 +23,11 @@ client = from_uri(TILED_URI, api_key=TILED_API_KEY)
 TILED_BASE_URI = client.uri
 
 WRITE_TILED_DIRECTLY = os.getenv("WRITE_TILED_DIRECTLY", False)
+
+
+@task
+def open_cbf(file_path):
+    return fabio.open(file_path).data
 
 
 @task
@@ -200,6 +205,38 @@ def write_1d_reduction_result_tiled(
     processed_client.create_array(key="intensity", array=data[1])
     if len(data) > 2:
         processed_client.create_array(key="errors", array=data[2])
+
+
+# This should be following a standard
+@task
+def write_1d_reduction_result_files_file_only(
+    input_file, result_type, data, **function_parameters
+):
+    input_file = input_file.replace("raw", "processed")
+    input_file = input_file.replace(".cbf", "")
+    input_file = os.path.normpath(input_file)
+    parts = input_file.split(os.sep)
+    current_folder = ""
+    for part in parts:
+        current_folder = os.path.join(current_folder, part)
+        if not os.path.isdir(current_folder):
+            os.mkdir(current_folder)
+
+    output_file_path = os.path.join(current_folder, f"{parts[-1]}_{result_type}.h5")
+
+    output_file = h5py.File(output_file_path, "w")
+
+    # default: q
+    output_unit = "q"
+    for key, value in function_parameters.items():
+        if key == "output_unit":
+            output_unit = value
+        output_file.attrs[key] = value
+
+    output_file.create_dataset(output_unit, data=data[0])
+    output_file.create_dataset("intensity", data=data[1])
+    if len(data) > 2:
+        output_file.create_dataset("errors", data=data[2])
 
 
 def write_1d_reduction_result(

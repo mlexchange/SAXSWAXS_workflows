@@ -10,7 +10,13 @@ from conversions import (
     q_parallel,
     q_z,
 )
-from file_handling import read_array_tiled, write_1d_reduction_result
+from file_handling import (
+    read_array_tiled,
+    write_1d_reduction_result,
+    open_mask,
+    open_cbf,
+    write_1d_reduction_result_files_file_only,
+)
 
 from prefect import flow, get_run_logger
 
@@ -185,7 +191,7 @@ def integrate1d_azimuthal(
 
     result = azimuthal_integrator.integrate1d(
         data=np.copy(image),
-        mask=mask,
+        mask=np.copy(mask),
         npt=num_bins,
         correctSolidAngle=True,
         error_model="poisson",
@@ -218,6 +224,32 @@ def integrate1d_azimuthal_tiled(
 ):
     function_parameters = locals().copy()
     reduction_tiled_wrapper(
+        integrate1d_azimuthal,
+        **function_parameters,
+    )
+
+
+@flow(name="saxs-waxs-azimuthal-integration-files")
+def integrate1d_azimuthal_files(
+    input_file_data: str,
+    input_file_mask: str,
+    beamcenter_x: float,
+    beamcenter_y: float,
+    sample_detector_dist: float,
+    wavelength: float,
+    pix_size: int,
+    tilt: float,
+    rotation: float,
+    polarization_factor: float,
+    num_bins: int,
+    chi_min: int,
+    chi_max: int,
+    inner_radius: int,
+    outer_radius: int,
+    output_unit: str,  # Always q for now
+):
+    function_parameters = locals().copy()
+    reduction_files_wrapper(
         integrate1d_azimuthal,
         **function_parameters,
     )
@@ -268,7 +300,6 @@ def integrate1d_radial(
     return result
 
 
-@flow(name="saxs-waxs-radial-integration-tiled")
 @flow(name="saxs-waxs-integration-radial-tiled")
 def integrate1d_radial_tiled(
     input_uri_data: str,
@@ -332,27 +363,61 @@ def reduction_tiled_wrapper(
     )
 
 
+def reduction_files_wrapper(
+    function_to_wrap,
+    **function_parameters,
+):
+    logger = get_run_logger()
+
+    input_file_data = function_parameters["input_file_data"]
+    function_parameters.pop("input_file_data")
+    input_file_mask = function_parameters["input_file_mask"]
+    function_parameters.pop("input_file_mask")
+
+    # Retrieve data from Tiled
+    image = open_cbf(input_file_data)
+    mask = open_mask(input_file_mask)
+    logger.debug(f"Using image from {image} and mask from {mask}.")
+
+    # we may want to check the parameters
+    function_to_wrap_parameters = inspect.signature(function_to_wrap).parameters
+    if "masked_image" in function_to_wrap_parameters:
+        masked_image = mask_image(image, mask)
+        # Pass the masked image to the reduction function
+        reduced_data = function_to_wrap(masked_image, **function_parameters)
+    else:
+        reduced_data = function_to_wrap(image, mask, **function_parameters)
+
+    reduced_data = filter_nans(reduced_data)
+
+    logger.debug(f"Saving {function_to_wrap.name} reduction for: {input_file_data}")
+
+    write_1d_reduction_result_files_file_only(
+        input_file_data,
+        function_to_wrap.name,
+        reduced_data,
+        **function_parameters,
+    )
+
+
 if __name__ == "__main__":
-    parameters_radial = {
-        "input_uri_data": "raw/cap1_saxs_00001r4/lmbdp03/cap1_saxs_00001r4",
-        "input_uri_mask": "raw/masks/saxs_mask",
-        "beamcenter_x": 2945,  # x-coordiante of the beam center postion in pixel
-        "beamcenter_y": 900,  # y-coordiante of the beam center postion in pixel
-        "sample_detector_dist": 833.8931,  # sample-detector-distance in mm
-        "pix_size": 55,  # pixel size in microns
+    parameters_azimuthal = {
+        "input_file_data": r"Y:\p03\2023\data\xxxxxx\raw\xyz\embl_2m\xyz.cbf",
+        "input_file_mask": r"Y:\p03\2023\data\xxxxxx\saxs_mask.tif",
+        "beamcenter_x": 759,  # x-coordiante of the beam center postion in pixel
+        "beamcenter_y": 1416,  # y-coordiante of the beam center postion in pixel
+        "sample_detector_dist": 4248.41,  # sample-detector-distance in mm
+        "pix_size": 172,  # pixel size in microns
         "wavelength": 1.044,  # wavelength in Angstrom
         "chi_min": -180,
         "chi_max": 180,
         "inner_radius": 1,
         "outer_radius": 2900,
         "polarization_factor": 0.99,
-        "rotation": 49.530048,  # detector rotation in degrees (Fit2D convention)
-        "tilt": 1.688493,  # detector tilt in degrees (Fit2D convention)
-        "num_bins": 1450,
-        "output_unit": "chi",  # "q"
+        "rotation": 0.0,  # detector rotation in degrees (Fit2D convention)
+        "tilt": 0.0,  # detector tilt in degrees (Fit2D convention)
+        "num_bins": 800,
+        "output_unit": "q",
     }
-    integrate1d_radial_tiled(**parameters_radial)
-
-    parameters_azimuthal = parameters_radial.copy()
     parameters_azimuthal["output_unit"] = "q"
-    integrate1d_azimuthal_tiled(**parameters_radial)
+    integrate1d_azimuthal_files(**parameters_azimuthal)

@@ -66,3 +66,14 @@ deployments:
     work_queue_name:
     job_variables: {}
   schedule:
+- name: integration_azimuthal_files
+  version:
+  tags: []
+  description:
+  entrypoint: saxswaxs_workflows\flows\reduction.py:integrate1d_azimuthal_files
+  parameters: {}
+  work_pool:
+    name: reduction-pool
+    work_queue_name:
+    job_variables: {}
+  schedule:
