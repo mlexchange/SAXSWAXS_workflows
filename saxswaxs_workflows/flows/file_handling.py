@@ -279,6 +279,7 @@ def write_1d_reduction_result_files_file_only(
     output_file.create_dataset("intensity", data=data[1])
     if len(data) > 2:
         output_file.create_dataset("errors", data=data[2])
+    return output_file_path
 
 
 def write_1d_reduction_result(
@@ -315,14 +316,60 @@ def read_reduction(input_file_path):
     return x_data, y_data
 
 
+def fio_file_from_scan(input_file_path):
+    """
+    fio file is located in raw/online/scan_name.fio, when the given file_name is
+    /raw/scan_name/embl_2m/scan_name_id.cbf
+    """
+    pattern = re.compile(
+        r"(.*[\\\/]*raw)[\\\/]*([_a-z\d]+)[\\\/]*embl_2m[\\\/]*\2_\d{5}.cbf"
+    )
+    match = pattern.search(input_file_path)
+    if match:
+        fio_file = os.path.join(match.group(1), match.group(2) + ".fio")
+        return fio_file
+    return None
+
+
 def write_fitting(input_file_path, fitted_x_peaks, fitted_y_peaks, fitted_fwhms):
-    df = pd.DataFrame({"x": fitted_x_peaks, "y": fitted_y_peaks, "fwhm": fitted_fwhms})
+    fio_file = fio_file_from_scan(input_file_path)
+
+    if not fio_file:
+        parameters_single, parameter_columns = get_parameters_from_fio(
+            filepath,
+            parameter_names=["ELLI_Y", "ELLI_Z"],
+            parameter_names_columns=["VFC01", "VFC02", "POS"],
+        )
+        elli_z_vals = parameters_single["ELLI_Z"]
+        elli_y_vals = parameters_single["ELLI_Y"]
+
+    df = pd.DataFrame(
+        {
+            "x": fitted_x_peaks,
+            "y": fitted_y_peaks,
+            "fwhm": fitted_fwhms,
+            "ELLI_Y": elli_z_vals,
+            "ELLI_Z": elli_y_vals,
+        }
+    )
 
     output_file_path = input_file_path.replace(
         "integration_azimuthal.h5", "fitted_peak.csv"
     )
 
     df.to_csv(output_file_path, index=False)
+
+
+def write_gp_mean(first_file_name, counter, x, y, f, gp_x, gp_y):
+    output_file_path = first_file_name.replace("_00000", "_" + str(counter).zfill(5))
+    output_file_path = output_file_path("fitted_peak.csv", "gp_state")
+    output_file = h5py.File(output_file_path, "w")
+
+    output_file.create_dataset("x", data=x)
+    output_file.create_dataset("y", data=y)
+    output_file.create_dataset("gp_mean", data=f)
+    output_file.create_dataset("gp_x", data=gp_x)
+    output_file.create_dataset("gp_y", data=gp_y)
 
 
 if __name__ == "__main__":
