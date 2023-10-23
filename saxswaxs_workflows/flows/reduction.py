@@ -404,20 +404,20 @@ if __name__ == "__main__":
     parameters_azimuthal = {
         "input_file_data": r"Y:\p03\2023\data\xxxxxx\raw\xyz\embl_2m\xyz.cbf",
         "input_file_mask": r"Y:\p03\2023\data\xxxxxx\saxs_mask.tif",
-        "beamcenter_x": 759,  # x-coordiante of the beam center postion in pixel
-        "beamcenter_y": 1416,  # y-coordiante of the beam center postion in pixel
-        "sample_detector_dist": 4248.41,  # sample-detector-distance in mm
-        "pix_size": 172,  # pixel size in microns
-        "wavelength": 1.044,  # wavelength in Angstrom
+        "beamcenter_x": 759,
+        "beamcenter_y": 1416,
+        "sample_detector_dist": 4248.41,
+        "pix_size": 172,
+        "wavelength": 1.044,
         "chi_min": -180,
         "chi_max": 180,
         "inner_radius": 1,
         "outer_radius": 2900,
         "polarization_factor": 0.99,
-        "rotation": 0.0,  # detector rotation in degrees (Fit2D convention)
-        "tilt": 0.0,  # detector tilt in degrees (Fit2D convention)
+        "rotation": 0.0,
+        "tilt": 0.0,
         "num_bins": 800,
         "output_unit": "q",
     }
     parameters_azimuthal["output_unit"] = "q"
-    integrate1d_azimuthal_files(**parameters_azimuthal)
+    integrate1d_azimuthal_files(parameters_azimuthal)

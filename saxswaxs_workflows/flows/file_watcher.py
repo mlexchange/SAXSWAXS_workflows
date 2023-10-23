@@ -14,11 +14,11 @@ PATH_TO_DATA = os.getenv("PATH_TO_DATA")
 logger = logging.getLogger("data_watcher.p03")
 logger.setLevel("INFO")
 logname = "data_watcher_p03.log"
-logger.addHandler(logging.StreamHandler(sys.stdout))
+logger.addHandler(logging.StreamHandler())
 
-parameters_azimuthal = {
-    "input_file_data": "Y:\\p03\\2023\\data\\xxxxxxxx\\raw\\xxx\\embl_2m\\xxx.cbf",
-    "input_file_mask": "Y:\\p03\\2023\\data\\xxxxxxxx\\processed\\masks\\saxs_mask.tif",
+parameters = {
+    "input_file_data": r"Y:\\p03\\2023\\data\\xxxxxxxx\\raw\\xxx\\embl_2m\\xxx.cbf",
+    "input_file_mask": r"Y:\p03\2023\data\11019119\processed\masks\saxs_mask.tif",
     "beamcenter_x": 759,
     "beamcenter_y": 1416,
     "sample_detector_dist": 4248.41,
@@ -33,9 +33,6 @@ parameters_azimuthal = {
     "tilt": 0.0,
     "num_bins": 800,
     "output_unit": "q",
-}
-
-parameters_fitting = {
     "input_file_reduction": "test_integration-azimuthal.h5",
     "x_peaks": [0],
     "y_peaks": [1],
@@ -45,10 +42,9 @@ parameters_fitting = {
     "peak_shape": "gaussian",
 }
 
-
 async def post_file_created(client, dataset_path):
     logger.info(dataset_path)
-    parameters_azimuthal["input_file_data"] = dataset_path
+    parameters["input_file_data"] = dataset_path
     async with get_client() as client:
         await client.create_flow_run_from_deployment(
             deployment_id="8154e634-87df-421e-b94c-25f67a374033",
@@ -66,6 +62,7 @@ async def watch_directory():
                 continue
             if ".cbf" not in change[1]:
                 continue
+            if ".tmp" in change[1]:
             dataset_path = change[1]
             await post_file_created(client, dataset_path)
 

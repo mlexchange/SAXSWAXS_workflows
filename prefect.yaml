@@ -77,3 +77,25 @@ deployments:
     work_queue_name:
     job_variables: {}
   schedule:
+- name: gp_optimizer
+  version:
+  tags: []
+  description:
+  entrypoint: saxswaxs_workflows\flows\autonomous.py:gp_optimizer
+  parameters: {}
+  work_pool:
+    name: gpCam-pool
+    work_queue_name:
+    job_variables: {}
+  schedule:
+- name: two_step_pipeline
+  version:
+  tags: []
+  description:
+  entrypoint: saxswaxs_workflows\flows\pipeline.py:two_step_pipeline
+  parameters: {}
+  work_pool:
+    name: fitting-pool
+    work_queue_name:
+    job_variables: {}
+  schedule:

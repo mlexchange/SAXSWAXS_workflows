@@ -10,17 +10,18 @@ from prefect import flow, task
 
 
 @task(name="query_instrument")
-def instrument(x_data, file_path, scan_id_range=(0, 1)):
+def instrument(x_data, file_path, scan_id_range=(1, 2)):
     print("Suggested by gpCAM: ", x_data)
     y_data = np.empty(len(x_data))
-    i = 0
-    for id in scan_id_range:
+    i = 1
+    for id in range(scan_id_range[0], scan_id_range[1]):
         file_path_with_id = file_path.replace("_00000", "_" + str(id).zfill(5))
+        print("waiting for file :", file_path_with_id)
         while not os.path.exists(file_path_with_id):
             time.sleep(1)
         df = pd.read_csv(file_path_with_id)
-        x_data[i] = np.array([[df["ELLI_Y"][0], df["ELLI_Z"][0]]])
-        y_data[i] = df["y"][0]
+        x_data[i-1] = np.array([[df["ELLI_Y"][0], df["ELLI_Z"][0]]])
+        y_data[i-1] = df["y"][0]
         i += 1
     print("Received from Apparatus: ", y_data.reshape(-1, 1), " @ ", x_data)
     # Return values need to be a 2d array, because it could be several
@@ -37,7 +38,7 @@ def acq_func(x, obj):
 
 
 @flow(name="autonomous_experiment")
-def gp_optimizer(first_file_name):
+def gp_optimizer(first_file_name, iterations):
     # bound of the input space (parameters that are controlled)
     bounds = np.array([[-5, 4.975], [-5, 4.975]])
 
@@ -52,7 +53,7 @@ def gp_optimizer(first_file_name):
 
     # x_data may be overwritten
     x_data, y_data = instrument(
-        x_init, scan_id_range=(0, init_N), file_path=first_file_name
+        x_init, scan_id_range=(1, init_N+1), file_path=first_file_name
     )
 
     # initialize the GPOptimizer
@@ -69,7 +70,7 @@ def gp_optimizer(first_file_name):
     print("hyperparameters after 1st training: ", my_gpo.hyperparameters)
 
     training_list = [25, 50]  # when do you want to train?
-    count = init_N
+    count = init_N + 1
 
     # for prediction
     x_pred = np.zeros((134 * 134, 2))
@@ -83,7 +84,7 @@ def gp_optimizer(first_file_name):
             counter += 1
 
     # control your break
-    while count < 100:
+    while count < iterations:
         print(count)
         new_x = my_gpo.ask(
             n=1,
@@ -105,10 +106,15 @@ def gp_optimizer(first_file_name):
         if count in training_list:
             my_gpo.train_gp(hps_bounds)
             print("new hyperparameters: ", my_gpo.hyperparameters)
-        count += 1
 
         res = my_gpo.posterior_mean(x_pred)
         f = res["f(x)"]
         f = f.reshape(134, 134)
 
-        write_gp_mean(first_file_name, counter, x, y, f, my_gpo.x_data, my_gpo.y_data)
+        write_gp_mean(first_file_name, count, x, y, f, my_gpo.x_data, my_gpo.y_data)
+        count += 1
+        
+if __name__ == "__main__":
+    first_file_name = r"Y:\p03\2023\data\11019119\processed\bs_pksample_c_gpcam_test_00000\embl_2m\bs_pksample_c_gpcam_test_00000_00001\bs_pksample_c_gpcam_test_00000_00001_fitted_peak.csv"
+    iterations = 100
+    gp_optimizer(first_file_name,iterations)

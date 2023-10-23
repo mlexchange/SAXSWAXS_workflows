@@ -160,7 +160,7 @@ def get_parameters_from_fio(path, parameter_names, parameter_names_columns):
 
     marker = 0
     line_id = 0
-    with open(path) as file:
+    with open(path, "r") as file:
         for line in file:
             line_id += 1
             for pattern in parameter_patterns:
@@ -339,11 +339,11 @@ def fio_file_from_scan(input_file_path):
         return fio_file
     return None
 
-
+@task
 def write_fitting(input_file_path, fitted_x_peaks, fitted_y_peaks, fitted_fwhms):
     fio_file = fio_file_from_scan(input_file_path)
-
-    if not fio_file:
+    print("Fio-file", fio_file)
+    if fio_file:
         parameters_single, parameter_columns = get_parameters_from_fio(
             fio_file,
             parameter_names=["ELLI_Y", "ELLI_Z"],
@@ -363,7 +363,7 @@ def write_fitting(input_file_path, fitted_x_peaks, fitted_y_peaks, fitted_fwhms)
     )
 
     output_file_path = input_file_path.replace(
-        "integration_azimuthal.h5", "fitted_peak.csv"
+        "integration-azimuthal.h5", "fitted_peak.csv"
     )
 
     df.to_csv(output_file_path, index=False)
@@ -371,7 +371,7 @@ def write_fitting(input_file_path, fitted_x_peaks, fitted_y_peaks, fitted_fwhms)
 
 def write_gp_mean(first_file_name, counter, x, y, f, gp_x, gp_y):
     output_file_path = first_file_name.replace("_00000", "_" + str(counter).zfill(5))
-    output_file_path = output_file_path("fitted_peak.csv", "gp_state")
+    output_file_path = output_file_path.replace("fitted_peak.csv", "gp_state.h5")
     output_file = h5py.File(output_file_path, "w")
 
     output_file.create_dataset("x", data=x)
@@ -386,7 +386,7 @@ if __name__ == "__main__":
 
     parameters_single, parameter_columns = get_parameters_from_fio(
         filepath,
-        parameter_names=["ELLI_X", "ELLI_Y"],
+        parameter_names=["ELLI_Z", "ELLI_Y"],
         parameter_names_columns=["VFC01", "VFC02", "POS"],
     )
     print(parameters_single)
