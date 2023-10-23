@@ -33,7 +33,6 @@ parameters = {
     "tilt": 0.0,
     "num_bins": 800,
     "output_unit": "q",
-    "input_file_reduction": "test_integration-azimuthal.h5",
     "x_peaks": [0],
     "y_peaks": [1],
     "stddevs": [0.01],
@@ -42,19 +41,18 @@ parameters = {
     "peak_shape": "gaussian",
 }
 
-async def post_file_created(client, dataset_path):
+async def post_file_created(dataset_path):
     logger.info(dataset_path)
     parameters["input_file_data"] = dataset_path
     async with get_client() as client:
         await client.create_flow_run_from_deployment(
-            deployment_id="8154e634-87df-421e-b94c-25f67a374033",
-            parameters=parameters_azimuthal,
+            deployment_id="fcd546f9-3e58-4539-ba82-bcbb6b190706",
+            parameters=(parameters),
         )
 
 
 async def watch_directory():
     logger.info(f"Watching directory {PATH_TO_DATA}")
-    client = None
     async for changes in watchgod.awatch(PATH_TO_DATA):
         for change in changes:
             logger.info(f"Detected change in {change[1]}")
@@ -63,10 +61,13 @@ async def watch_directory():
             if ".cbf" not in change[1]:
                 continue
             if ".tmp" in change[1]:
+                continue
             dataset_path = change[1]
-            await post_file_created(client, dataset_path)
+            await post_file_created(dataset_path)
 
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(watch_directory())
+    #loop = asyncio.get_event_loop()
+    #loop.run_until_complete(watch_directory())
+    dataset_path = r"Y:\p03\2023\data\11019119\raw\bs_pksample_c_gpcam_test_00022\embl_2m\bs_pksample_c_gpcam_test_00022_00001.cbf"
+    asyncio.run(post_file_created(dataset_path))  

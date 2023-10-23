@@ -15,8 +15,8 @@ push:
 # pull section allows you to provide instructions for cloning this project in remote locations
 pull:
 - prefect.deployments.steps.set_working_directory:
-    directory:
-      /app
+    directory: D:/prefect/SAXSWAXS_workflows
+      #/app
       #</Working/Directory/To/Be/Set>
       #/Users/wiebke/Documents/Projects/2023.03-Beamline-733-Autonomous-Data-Collection/SAXSWAXS_workflows
 

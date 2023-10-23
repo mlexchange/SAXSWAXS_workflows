@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from tiled.client import from_uri
 
 from prefect import task
+from prefect.tasks import task_input_hash
 
 load_dotenv()
 
@@ -20,13 +21,13 @@ if not os.path.isdir(PATH_TO_RESULTS):
 TILED_URI = os.getenv("TILED_URI", "")
 TILED_API_KEY = os.getenv("TILED_API_KEY")
 
-try:
-    client = from_uri(TILED_URI, api_key=TILED_API_KEY)
-    TILED_BASE_URI = client.uri
-except Exception as e:
-    print(e)
-    client = None
-    TILED_BASE_URI = ""
+#try:
+#    client = from_uri(TILED_URI, api_key=TILED_API_KEY)
+#    TILED_BASE_URI = client.uri
+#except Exception as e:
+#    print(e)
+client = None
+TILED_BASE_URI = ""
 
 WRITE_TILED_DIRECTLY = os.getenv("WRITE_TILED_DIRECTLY", False)
 
@@ -148,12 +149,15 @@ def get_ioni_diode_from_fio(path):
 
     return res
 
-
 def get_parameters_from_fio(path, parameter_names, parameter_names_columns):
     parameter_patterns = [
         (param, re.compile(param + r"\s*=\s*([-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?)"))
         for param in parameter_names
     ]
+
+    path = os.path.normpath(path)
+    if not os.path.exists(path):
+        print("File does not exsist:", path)
 
     parameters = dict()
     parameter_columns = dict()
@@ -335,7 +339,8 @@ def fio_file_from_scan(input_file_path):
     )
     match = pattern.search(input_file_path)
     if match:
-        fio_file = os.path.join(match.group(1), "online", match.group(2) + ".fio")
+        beginning_path = "Y:\\p03\\2023\\data\\11019119\\raw"
+        fio_file = os.path.join(beginning_path, "online", match.group(2) + ".fio")
         return fio_file
     return None
 
@@ -351,7 +356,9 @@ def write_fitting(input_file_path, fitted_x_peaks, fitted_y_peaks, fitted_fwhms)
         )
         elli_z_vals = parameters_single["ELLI_Z"]
         elli_y_vals = parameters_single["ELLI_Y"]
-
+    else:
+        elli_z_vals = np.array([0])
+        elli_y_vals = np.array([0])
     df = pd.DataFrame(
         {
             "x": fitted_x_peaks,
@@ -382,7 +389,7 @@ def write_gp_mean(first_file_name, counter, x, y, f, gp_x, gp_y):
 
 
 if __name__ == "__main__":
-    filepath = "example.fio"
+    filepath = r"Y:\p03\2023\data\11019119\raw\online\bs_pksample_c_gpcam_test_00001.fio"
 
     parameters_single, parameter_columns = get_parameters_from_fio(
         filepath,

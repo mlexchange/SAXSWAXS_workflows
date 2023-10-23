@@ -7,7 +7,32 @@ from prefect import flow
 
 
 @flow(name="reduction_and_fit")
-def two_step_pipeline(**parameters):
+def two_step_pipeline(
+    input_file_data: str,
+    input_file_mask: str,
+    beamcenter_x: float,
+    beamcenter_y: float,
+    sample_detector_dist: float,
+    wavelength: float,
+    pix_size: int,
+    tilt: float,
+    rotation: float,
+    polarization_factor: float,
+    chi_min: int,
+    chi_max: int,
+    inner_radius: int,
+    outer_radius: int,
+    num_bins: int,
+    output_unit: str,
+    x_peaks, 
+    y_peaks, 
+    stddevs, 
+    fwhm_Gs, 
+    fwhm_Ls, 
+    peak_shape  
+    ):
+    parameters = locals().copy()
+
     parameters_reduction = dict()
     required_parameters_reduction = inspect.signature(
         integrate1d_azimuthal_files
@@ -29,8 +54,8 @@ def two_step_pipeline(**parameters):
 
 if __name__ == "__main__":
     parameters = {
-        "input_file_data": r"exmple.cbf",
-        "input_file_mask": r"mask.tiff",
+        "input_file_data": r"Y:\p03\2023\data\11019119\raw\bs_pksample_c_gpcam_test_00022\embl_2m\bs_pksample_c_gpcam_test_00022_00001.cbf",
+        "input_file_mask": r"Y:\p03\2023\data\11019119\processed\masks\saxs_mask.tif",
         "beamcenter_x": 759,  # x-coordiante of the beam center postion in pixel
         "beamcenter_y": 1416,  # y-coordiante of the beam center postion in pixel
         "sample_detector_dist": 4248.41,  # sample-detector-distance in mm
