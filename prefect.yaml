@@ -70,7 +70,7 @@ deployments:
   version:
   tags: []
   description:
-  entrypoint: saxswaxs_workflows\flows\reduction.py:integrate1d_azimuthal_files
+  entrypoint: saxswaxs_workflows/flows/reduction.py:integrate1d_azimuthal_files
   parameters: {}
   work_pool:
     name: reduction-pool
@@ -81,7 +81,7 @@ deployments:
   version:
   tags: []
   description:
-  entrypoint: saxswaxs_workflows\flows\autonomous.py:gp_optimizer
+  entrypoint: saxswaxs_workflows/flows/autonomous.py:gp_optimizer
   parameters: {}
   work_pool:
     name: gpCam-pool
@@ -92,7 +92,7 @@ deployments:
   version:
   tags: []
   description:
-  entrypoint: saxswaxs_workflows\flows\pipeline.py:two_step_pipeline
+  entrypoint: saxswaxs_workflows/flows/pipeline.py:two_step_pipeline
   parameters: {}
   work_pool:
     name: fitting-pool
