@@ -54,19 +54,17 @@ python saxswaxs-workflows/flows/reduction.py
 # Setup for beamtime
 (Once we confirmed that the first part runs)
 
-In another terminal, create a work-pool for the reduction and start that work-pool:
+In another terminal, create work-pools:, the `reduction-pool` for reducing data, the `fitting-pool` for feature extraction, and the `gpcam-pool` for running gpCAM, 
+and deploy all flows that are defined within `prefect.yaml`. For convinience, these steps are summarized in the script
 
 ```bash
-prefect work-pool create reduction-pool
-prefect worker start --pool 'reduction-pool'
+./create_deployments.sh
 ```
 
-Repeat this step for other pools, e.g. the `gpcam-pool` for running gpCAM and the `fitting-pool` for feature extraction.
-
-Deploy all flows that are defined within `prefect.yaml`
+Finally, start the workers with
 
 ```bash
-prefect deploy --all
+prefect worker start --pool 'reduction-pool'
 ```
 
 # Copyright
