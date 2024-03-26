@@ -20,8 +20,8 @@ def instrument(x_data, file_path, scan_id_range=(1, 2)):
         while not os.path.exists(file_path_with_id):
             time.sleep(1)
         df = pd.read_csv(file_path_with_id)
-        x_data[i-1] = np.array([[df["ELLI_Y"][0], df["ELLI_Z"][0]]])
-        y_data[i-1] = df["y"][0]
+        x_data[i - 1] = np.array([[df["ELLI_Y"][0], df["ELLI_Z"][0]]])
+        y_data[i - 1] = df["y"][0]
         i += 1
     print("Received from Apparatus: ", y_data.reshape(-1, 1), " @ ", x_data)
     # Return values need to be a 2d array, because it could be several
@@ -53,7 +53,7 @@ def gp_optimizer(first_file_name, iterations):
 
     # x_data may be overwritten
     x_data, y_data = instrument(
-        x_init, scan_id_range=(1, init_N+1), file_path=first_file_name
+        x_init, scan_id_range=(1, init_N + 1), file_path=first_file_name
     )
 
     # initialize the GPOptimizer
@@ -113,8 +113,9 @@ def gp_optimizer(first_file_name, iterations):
 
         write_gp_mean(first_file_name, count, x, y, f, my_gpo.x_data, my_gpo.y_data)
         count += 1
-        
+
+
 if __name__ == "__main__":
-    first_file_name = r"Y:\p03\2023\data\11019119\processed\bs_pksample_c_gpcam_test_00000\embl_2m\bs_pksample_c_gpcam_test_00000_00001\bs_pksample_c_gpcam_test_00000_00001_fitted_peak.csv"
+    first_file_name = r"Y:\p03\2023\data\11019119\processed\bs_pksample_c_gpcam_test_00000\embl_2m\bs_pksample_c_gpcam_test_00000_00001\bs_pksample_c_gpcam_test_00000_00001_fitted_peak.csv"  # noqa: E501
     iterations = 100
-    gp_optimizer(first_file_name,iterations)
+    gp_optimizer(first_file_name, iterations)
