@@ -6,28 +6,32 @@ import h5py
 import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
+
+# from prefect.tasks import task_input_hash
+from tiled.adapters.hdf5 import HDF5Adapter
 from tiled.client import from_uri
+from tiled.structures.data_source import Asset, DataSource, Management
+from tiled.utils import ensure_uri
 
 from prefect import task
-from prefect.tasks import task_input_hash
 
 load_dotenv()
 
-PATH_TO_RESULTS = os.path.join(os.getenv("PATH_TO_DATA"), "processed")
-if not os.path.isdir(PATH_TO_RESULTS):
-    os.mkdir(PATH_TO_RESULTS)
+PATH_TO_PROCESSED_DATA = os.getenv("PATH_TO_PROCESSED_DATA")
+if not os.path.isdir(PATH_TO_PROCESSED_DATA):
+    path = os.path.normpath(PATH_TO_PROCESSED_DATA)
+    path.mkdir(parents=True, exist_ok=True)
 
 # Initialize the Tiled server
 TILED_URI = os.getenv("TILED_URI", "")
 TILED_API_KEY = os.getenv("TILED_API_KEY")
 
-#try:
-#    client = from_uri(TILED_URI, api_key=TILED_API_KEY)
-#    TILED_BASE_URI = client.uri
-#except Exception as e:
-#    print(e)
-client = None
-TILED_BASE_URI = ""
+try:
+    client = from_uri(TILED_URI, api_key=TILED_API_KEY)
+    TILED_BASE_URI = client.uri
+except Exception as e:
+    print(e)
+
 
 WRITE_TILED_DIRECTLY = os.getenv("WRITE_TILED_DIRECTLY", False)
 
@@ -149,6 +153,7 @@ def get_ioni_diode_from_fio(path):
 
     return res
 
+
 def get_parameters_from_fio(path, parameter_names, parameter_names_columns):
     parameter_patterns = [
         (param, re.compile(param + r"\s*=\s*([-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?)"))
@@ -209,7 +214,7 @@ def read_array_tiled(array_uri):
 def write_1d_reduction_result_file(
     trimmed_input_uri, result_type, data, **function_parameters
 ):
-    current_folder = PATH_TO_RESULTS
+    current_folder = PATH_TO_PROCESSED_DATA
     parts = trimmed_input_uri.split("/")
     for part in parts:
         current_folder = os.path.join(current_folder, part)
@@ -231,6 +236,38 @@ def write_1d_reduction_result_file(
     output_file.create_dataset("intensity", data=data[1])
     if len(data) > 2:
         output_file.create_dataset("errors", data=data[2])
+    return output_file_path
+
+
+def add_1d_reduction_result_tiled(
+    processed_client, trimmed_input_uri, result_type, output_file_path
+):
+    metadata = {"input_uri": trimmed_input_uri}
+    parts = trimmed_input_uri.split("/")
+    final_container = f"{parts[-1]}_{result_type}"
+    output_uri = f"{trimmed_input_uri}/{final_container}"
+    adapter = HDF5Adapter.from_uri(ensure_uri(output_file_path))
+    processed_client.new(
+        key=output_uri,
+        structure_family=adapter.structure_family,
+        data_sources=[
+            DataSource(
+                management=Management.external,
+                mimetype="application/x-hdf5",
+                structure_family=adapter.structure_family,
+                structure=None,
+                assets=[
+                    Asset(
+                        data_uri=ensure_uri(output_file_path),
+                        is_directory=False,
+                        parameter="data_uri",
+                    )
+                ],
+            ),
+        ],
+        metadata={**metadata, **adapter.metadata()},
+        specs=adapter.specs,
+    )
 
 
 @task
@@ -241,7 +278,7 @@ def write_1d_reduction_result_tiled(
     for part in parts:
         if part not in processed_client.keys():
             processed_client.create_container(part)
-        processed_client = processed_client["part"]
+        processed_client = processed_client[part]
 
     final_container = f"{parts[-1]}_{result_type}"
 
@@ -249,13 +286,22 @@ def write_1d_reduction_result_tiled(
     output_unit = "q"
     if "output_unit" in function_parameters:
         output_unit = function_parameters["output_unit"]
+    # If result already exists overwrite it
+    if final_container in processed_client:
+        # Delete all its children
+        prev_container_client = processed_client[final_container]
+        keys_to_delete = prev_container_client.keys()
+        for key in keys_to_delete:
+            prev_container_client.delete(key)
+        # Finally delete the container
+        processed_client.delete(final_container)
 
-    processed_client.create_container(key=final_container, meta=function_parameters)
+    processed_client.create_container(key=final_container, metadata=function_parameters)
     processed_client = processed_client[final_container]
-    processed_client.create_array(key=output_unit, array=data[0])
-    processed_client.create_array(key="intensity", array=data[1])
+    processed_client.write_array(key=output_unit, array=data[0])
+    processed_client.write_array(key="intensity", array=data[1])
     if len(data) > 2:
-        processed_client.create_array(key="errors", array=data[2])
+        processed_client.write_array(key="errors", array=data[2])
 
 
 # This should be following a standard
@@ -264,7 +310,7 @@ def write_1d_reduction_result_files_file_only(
     input_file, result_type, data, **function_parameters
 ):
     input_file = input_file.replace("raw", "processed")
-    input_file = input_file.replace(".cbf", "")
+    input_file = input_file.replace(".edf", "")
     input_file = os.path.normpath(input_file)
     parts = input_file.split(os.sep)
     current_folder = ""
@@ -300,11 +346,15 @@ def write_1d_reduction_result(
     if "raw/" in trimmed_input_uri:
         trimmed_input_uri = trimmed_input_uri.replace("raw/", "")
     if not WRITE_TILED_DIRECTLY:
-        write_1d_reduction_result_file(
+        output_file_path = write_1d_reduction_result_file(
             trimmed_input_uri,
             result_type,
             reduced_data,
             **function_parameters,
+        )
+        processed_client = client["processed"]
+        add_1d_reduction_result_tiled(
+            processed_client, trimmed_input_uri, result_type, output_file_path
         )
     else:
         write_1d_reduction_result_tiled(
@@ -343,6 +393,7 @@ def fio_file_from_scan(input_file_path):
         fio_file = os.path.join(beginning_path, "online", match.group(2) + ".fio")
         return fio_file
     return None
+
 
 @task
 def write_fitting(input_file_path, fitted_x_peaks, fitted_y_peaks, fitted_fwhms):
@@ -389,7 +440,9 @@ def write_gp_mean(first_file_name, counter, x, y, f, gp_x, gp_y):
 
 
 if __name__ == "__main__":
-    filepath = r"Y:\p03\2023\data\11019119\raw\online\bs_pksample_c_gpcam_test_00001.fio"
+    filepath = (
+        r"Y:\p03\2023\data\11019119\raw\online\bs_pksample_c_gpcam_test_00001.fio"
+    )
 
     parameters_single, parameter_columns = get_parameters_from_fio(
         filepath,
