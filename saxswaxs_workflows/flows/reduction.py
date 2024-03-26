@@ -414,11 +414,13 @@ def reduction_files_wrapper(
 
 if __name__ == "__main__":
     parameters_azimuthal = {
-        "input_file_data": r"Y:\p03\2023\data\xxxxxx\raw\xyz\embl_2m\xyz.cbf",
-        "input_file_mask": r"Y:\p03\2023\data\xxxxxx\saxs_mask.tif",
-        "beamcenter_x": 759,
-        "beamcenter_y": 1416,
-        "sample_detector_dist": 4248.41,
+        "input_uri_data": r"/raw/AgB_2024_03_25_10s_2m",
+        "input_uri_mask": r"/processed/masks/AgB_2024_03_27_30s_lo_2m_mask/M_ROIMask",
+        "beamcenter_x": 317.8,
+        "beamcenter_y": 1245.28,
+        "wavelength": 1.2398,
+        "polarization_factor": 0.99,
+        "sample_detector_dist": 274.83,
         "pix_size": 172,
         "chi_min": -180,
         "chi_max": 180,
