@@ -24,13 +24,13 @@ def two_step_pipeline(
     outer_radius: int,
     num_bins: int,
     output_unit: str,
-    x_peaks, 
-    y_peaks, 
-    stddevs, 
-    fwhm_Gs, 
-    fwhm_Ls, 
-    peak_shape  
-    ):
+    x_peaks,
+    y_peaks,
+    stddevs,
+    fwhm_Gs,
+    fwhm_Ls,
+    peak_shape,
+):
     parameters = locals().copy()
 
     parameters_reduction = dict()
@@ -54,7 +54,7 @@ def two_step_pipeline(
 
 if __name__ == "__main__":
     parameters = {
-        "input_file_data": r"Y:\p03\2023\data\11019119\raw\bs_pksample_c_gpcam_test_00022\embl_2m\bs_pksample_c_gpcam_test_00022_00001.cbf",
+        "input_file_data": r"Y:....\bs_pksample_c_gpcam_test_00022_00001.cbf",
         "input_file_mask": r"Y:\p03\2023\data\11019119\processed\masks\saxs_mask.tif",
         "beamcenter_x": 759,  # x-coordiante of the beam center postion in pixel
         "beamcenter_y": 1416,  # y-coordiante of the beam center postion in pixel
