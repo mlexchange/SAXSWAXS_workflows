@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import sys
 
 import watchgod
 from dotenv import load_dotenv
@@ -41,6 +40,7 @@ parameters = {
     "peak_shape": "gaussian",
 }
 
+
 async def post_file_created(dataset_path):
     logger.info(dataset_path)
     parameters["input_file_data"] = dataset_path
@@ -67,7 +67,7 @@ async def watch_directory():
 
 
 if __name__ == "__main__":
-    #loop = asyncio.get_event_loop()
-    #loop.run_until_complete(watch_directory())
-    dataset_path = r"Y:\p03\2023\data\11019119\raw\bs_pksample_c_gpcam_test_00022\embl_2m\bs_pksample_c_gpcam_test_00022_00001.cbf"
-    asyncio.run(post_file_created(dataset_path))  
+    # loop = asyncio.get_event_loop()
+    # loop.run_until_complete(watch_directory())
+    dataset_path = r"Y:\p03\2023\data\11019119\raw\bs_pksample_c_gpcam_test_00022\embl_2m\bs_pksample_c_gpcam_test_00022_00001.cbf"  # noqa: E501
+    asyncio.run(post_file_created(dataset_path))
