@@ -340,6 +340,12 @@ def reduction_tiled_wrapper(
     # Retrieve data from Tiled
     image = read_array_tiled(input_uri_data)
     mask = read_array_tiled(input_uri_mask)
+
+    # Mask is rotated & flipped
+    if mask.shape[0] == image.shape[1] and mask.shape[1] == image.shape[0]:
+        mask = np.flipud(mask)
+        mask = np.rot90(mask, 3)
+
     logger.debug(f"Using image from {image} and mask from {mask}.")
 
     # we may want to check the parameters
@@ -377,6 +383,12 @@ def reduction_files_wrapper(
     # Retrieve data from Tiled
     image = open_cbf(input_file_data)
     mask = open_mask(input_file_mask)
+
+    # Mask is rotated & flipped
+    if mask.shape[0] == image.shape[1] and mask.shape[1] == image.shape[0]:
+        mask = np.flipud(mask)
+        mask = np.rot90(mask, 3)
+
     logger.debug(f"Using image from {image} and mask from {mask}.")
 
     # we may want to check the parameters
@@ -408,7 +420,6 @@ if __name__ == "__main__":
         "beamcenter_y": 1416,
         "sample_detector_dist": 4248.41,
         "pix_size": 172,
-        "wavelength": 1.044,
         "chi_min": -180,
         "chi_max": 180,
         "inner_radius": 1,
@@ -420,4 +431,4 @@ if __name__ == "__main__":
         "output_unit": "q",
     }
     parameters_azimuthal["output_unit"] = "q"
-    integrate1d_azimuthal_files(parameters_azimuthal)
+    integrate1d_azimuthal_tiled(**parameters_azimuthal)
