@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 # from prefect.tasks import task_input_hash
 from tiled.adapters.hdf5 import HDF5Adapter
 from tiled.client import from_uri
+from tiled.structures.array import ArrayStructure, BuiltinDtype
+from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import Asset, DataSource, Management
 from tiled.utils import ensure_uri
 
@@ -17,7 +19,9 @@ from prefect import task
 
 load_dotenv()
 
+PATH_TO_RAW_DATA = os.getenv("PATH_TO_DATA")
 PATH_TO_PROCESSED_DATA = os.getenv("PATH_TO_PROCESSED_DATA")
+
 if not os.path.isdir(PATH_TO_PROCESSED_DATA):
     path = os.path.normpath(PATH_TO_PROCESSED_DATA)
     path.mkdir(parents=True, exist_ok=True)
@@ -207,6 +211,53 @@ def open_mask(mask_path):
 @task
 def read_array_tiled(array_uri):
     return from_uri(TILED_BASE_URI + array_uri)[:]
+
+
+def add_scan_tiled(scan_filepath):
+    common_path = os.path.commonpath([PATH_TO_RAW_DATA, scan_filepath])
+    if common_path is None:
+        return None
+
+    relative_scan_filepath = os.path.relpath(scan_filepath, PATH_TO_RAW_DATA)
+    scan_container, scan = os.path.split(relative_scan_filepath)
+    scan_container_parts = os.path.normpath(scan_container).split(os.sep)
+
+    current_container_client = client["raw"]
+    for part in scan_container_parts:
+        if part in current_container_client:
+            current_container_client = current_container_client[part]
+        else:
+            current_container_client = current_container_client.create_container(
+                key=part
+            )
+    key = os.path.splitext(scan)[0]
+
+    structure = ArrayStructure(
+        data_type=BuiltinDtype.from_numpy_dtype(np.dtype("int32")),
+        shape=(1679, 1475),
+        chunks=((1679,), (1475,)),
+    )
+
+    scan_client = current_container_client.new(
+        key=key,
+        structure_family=StructureFamily.array,
+        data_sources=[
+            DataSource(
+                management=Management.external,
+                mimetype="application/x-edf",
+                structure_family=StructureFamily.array,
+                structure=structure,
+                assets=[
+                    Asset(
+                        data_uri=ensure_uri(scan_filepath),
+                        is_directory=False,
+                        parameter="data_uri",
+                    )
+                ],
+            ),
+        ],
+    )
+    return scan_client.uri
 
 
 # This should be following a standard
@@ -440,14 +491,16 @@ def write_gp_mean(first_file_name, counter, x, y, f, gp_x, gp_y):
 
 
 if __name__ == "__main__":
-    filepath = (
-        r"Y:\p03\2023\data\11019119\raw\online\bs_pksample_c_gpcam_test_00001.fio"
-    )
-
-    parameters_single, parameter_columns = get_parameters_from_fio(
-        filepath,
-        parameter_names=["ELLI_Z", "ELLI_Y"],
-        parameter_names_columns=["VFC01", "VFC02", "POS"],
-    )
-    print(parameters_single)
-    print(parameter_columns)
+    # filepath = (
+    #    r"Y:\p03\2023\data\11019119\raw\online\bs_pksample_c_gpcam_test_00001.fio"
+    # )
+    #
+    # parameters_single, parameter_columns = get_parameters_from_fio(
+    #    filepath,
+    #    parameter_names=["ELLI_Z", "ELLI_Y"],
+    #    parameter_names_columns=["VFC01", "VFC02", "POS"],
+    # )
+    # print(parameters_single)
+    # print(parameter_columns)
+    filepath = r"/Users/saxswaxs/733data/bl733data-2017/userdata/Hexemer/2024_03_25/NaCl_1_40/NaCl_1_40_sample_446_2m.edf"  # noqa E501
+    add_scan_tiled(filepath)
