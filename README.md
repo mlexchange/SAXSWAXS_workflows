@@ -2,7 +2,7 @@
 
 Data analysis workflows for SAXS/WAXS
 
-# Clone repository and setup Python environment
+## Clone repository and setup Python environment
 
 ```bash
 git clone git@github.com:als-computing/SAXSWAXS_workflows.git
@@ -14,7 +14,7 @@ pip install -r requirements.txt
 
 The command `source saxswaxs-workflows-env/bin/activate` may need to be adapted for the specific operating system, see the [venv](https://docs.python.org/3/library/venv.html) documentation
 
-# Set up environment file with relevant paths
+## Set up environment file with relevant paths
 
 Create a file `.env` with the following content
 
@@ -25,7 +25,7 @@ TILED_API_KEY="<randomly generated key>"
 PATH_TO_DATA="<path to folder that has structure as beamtime (with subfolders /raw, /processed/ ...)>"
 ```
 
-# Prefect Server
+## Prefect Server
 
 In one terminal that has the environment activated start a prefect server
 
@@ -39,11 +39,11 @@ As instructed in the Prefect server startup prompt, make sure prefect is configu
 prefect config set PREFECT_API_URL=http://127.0.0.1:4200/api
 ```
 
-# Tiled server
+## Tiled server
 
 Within the interface folder (the other repository `/workflow-viz`), follow the instructions to start a Tiled server, and a Tiled watch process that observes changes in a directory
 
-# First test
+## First test
 
 Adapt the parameters in the example in `reduction.py` to point to a dataset that is contained in the folder and run it
 
@@ -51,10 +51,11 @@ Adapt the parameters in the example in `reduction.py` to point to a dataset that
 python saxswaxs-workflows/flows/reduction.py
 ```
 
-# Setup for beamtime
+## Setup for beamtime
+
 (Once we confirmed that the first part runs)
 
-In another terminal, create work-pools:, the `reduction-pool` for reducing data, the `fitting-pool` for feature extraction, and the `gpcam-pool` for running gpCAM, 
+In another terminal, create work-pools:, the `reduction-pool` for reducing data, the `fitting-pool` for feature extraction, and the `gpcam-pool` for running gpCAM,
 and deploy all flows that are defined within `prefect.yaml`. For convinience, these steps are summarized in the script
 
 ```bash
@@ -67,9 +68,10 @@ Finally, start the workers with
 prefect worker start --pool 'reduction-pool'
 ```
 
-# Copyright
+## Copyright
+
 MLExchange Copyright (c) 2023, The Regents of the University of California, through Lawrence Berkeley National Laboratory (subject to receipt of any required approvals from the U.S. Dept. of Energy). All rights reserved.
 
-If you have questions about your rights to use or distribute this software, please contact Berkeley Lab's Intellectual Property Office at IPO@lbl.gov.
+If you have questions about your rights to use or distribute this software, please contact Berkeley Lab's Intellectual Property Office at <IPO@lbl.gov>.
 
 NOTICE.  This Software was developed under funding from the U.S. Department of Energy and the U.S. Government consequently retains certain rights.  As such, the U.S. Government has been granted for itself and others acting on its behalf a paid-up, nonexclusive, irrevocable, worldwide license in the Software to reproduce, distribute copies to the public, prepare derivative works, and perform publicly and display publicly, and to permit others to do so.
