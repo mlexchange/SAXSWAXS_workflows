@@ -10,4 +10,5 @@ matplotlib==3.8.0
 pyyaml==6.0.1
 python-dotenv==1.0.0
 prefect==2.13.4
+astropy==5.3.4
 gpCAM
