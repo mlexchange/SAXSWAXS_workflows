@@ -37,7 +37,8 @@ def _fit_gaussian(x_data, y_data, x_peaks, y_peaks, stddevs):
     for ii, (x_peak, y_peak, stddev) in enumerate(zip(x_peaks, y_peaks, stddevs)):
         if ii == 0:
             g = models.Gaussian1D(amplitude=y_peak, mean=x_peak, stddev=stddev)
-            g.mean.fixed = True  # Fix peak at 0
+            # Fix peak at 0
+            g.mean.fixed = True
             sum_models = g
         else:
             g = models.Gaussian1D(amplitude=y_peak, mean=x_peak, stddev=stddev)
@@ -63,7 +64,8 @@ def _fit_voigt(x_data, y_data, x_peaks, y_peaks, fwhm_Ls, fwhm_Gs):
             g = models.Voigt1D(
                 amplitude_L=y_peak, x_0=x_peak, fwhm_L=fwhm_L, fwhm_G=fwhm_G
             )
-            g.x_0.fixed = True  # Fix peak at 0
+            # Fix peak at 0
+            g.x_0.fixed = True
             sum_models = g
         else:
             g = models.Voigt1D(
