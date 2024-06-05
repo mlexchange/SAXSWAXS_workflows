@@ -1,4 +1,5 @@
 import os
+import pathlib
 import re
 
 import fabio
@@ -11,7 +12,7 @@ from dotenv import load_dotenv
 from tiled.adapters.hdf5 import HDF5Adapter
 from tiled.client import from_uri
 from tiled.structures.array import ArrayStructure, BuiltinDtype
-from tiled.structures.core import StructureFamily
+from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.data_source import Asset, DataSource, Management
 from tiled.utils import ensure_uri
 
@@ -213,6 +214,44 @@ def read_array_tiled(array_uri):
     return from_uri(TILED_BASE_URI + array_uri)[:]
 
 
+# TODO: Temporaly copied here, will be removed again
+def parse_txt_accompanying_edf(filepath):
+    """Pase a .txt file produced at ALS beamline 7.3.3 into a dictionary.
+
+    Parameters
+    ----------
+    filepath: str or pathlib.Path
+        Filepath of the .edf file.
+    """
+    txt_filepath = None
+    if isinstance(filepath, str):
+        txt_filepath = filepath.replace(".edf", ".txt")
+    if isinstance(filepath, pathlib.Path):
+        txt_filepath = filepath.with_suffix(".txt")
+
+    # File does not exist, return empty dictionary
+    if not os.path.isfile(txt_filepath):
+        return dict()
+
+    with open(txt_filepath, "r") as file:
+        lines = file.readlines()
+
+    # Some lines have the format
+    # key: value
+    # others are just values with no key
+    keyless_lines = 0
+    txt_params = dict()
+    for line in lines:
+        line_components = list(map(str.strip, line.split(":", maxsplit=1)))
+        if len(line_components) >= 2:
+            txt_params[line_components[0]] = line_components[1]
+        else:
+            if line_components[0] != "!0":
+                txt_params[f"Keyless Parameter #{keyless_lines}"] = line_components[0]
+                keyless_lines += 1
+    return txt_params
+
+
 def add_scan_tiled(scan_filepath):
     common_path = os.path.commonpath([PATH_TO_RAW_DATA, scan_filepath])
     if common_path is None:
@@ -241,6 +280,7 @@ def add_scan_tiled(scan_filepath):
         chunks=((1679,), (1475,)),
     )
 
+    metadata = parse_txt_accompanying_edf(scan_filepath)
     # TODO: Add metadata and spec
 
     scan_client = current_container_client.new(
@@ -261,6 +301,8 @@ def add_scan_tiled(scan_filepath):
                 ],
             ),
         ],
+        metadata=metadata,
+        specs=[Spec("edf")],
     )
     return scan_client.uri
 
