@@ -15,7 +15,7 @@ from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import Asset, DataSource, Management
 from tiled.utils import ensure_uri
 
-from prefect import task
+from prefect import flow, get_run_logger, task
 
 load_dotenv()
 
@@ -37,7 +37,7 @@ except Exception as e:
     print(e)
 
 
-WRITE_TILED_DIRECTLY = os.getenv("WRITE_TILED_DIRECTLY", False)
+WRITE_TILED_MODE = os.getenv("WRITE_TILED", "Files")
 
 
 @task
@@ -232,11 +232,16 @@ def add_scan_tiled(scan_filepath):
             )
     key = os.path.splitext(scan)[0]
 
+    if key in current_container_client:
+        current_container_client.delete(key)
+
     structure = ArrayStructure(
         data_type=BuiltinDtype.from_numpy_dtype(np.dtype("int32")),
         shape=(1679, 1475),
         chunks=((1679,), (1475,)),
     )
+
+    # TODO: Add metadata and spec
 
     scan_client = current_container_client.new(
         key=key,
@@ -282,6 +287,7 @@ def write_1d_reduction_result_file(
         if key == "output_unit":
             output_unit = value
         output_file.attrs[key] = value
+    output_file.attrs["input_uri"] = trimmed_input_uri
 
     output_file.create_dataset(output_unit, data=data[0])
     output_file.create_dataset("intensity", data=data[1])
@@ -290,23 +296,43 @@ def write_1d_reduction_result_file(
     return output_file_path
 
 
+@task
 def add_1d_reduction_result_tiled(
-    processed_client, trimmed_input_uri, result_type, output_file_path
+    processed_client,
+    trimmed_input_uri,
+    result_type,
+    output_file_path,
 ):
     metadata = {"input_uri": trimmed_input_uri}
     parts = trimmed_input_uri.split("/")
     final_container = f"{parts[-1]}_{result_type}"
-    output_uri = f"{trimmed_input_uri}/{final_container}"
+
+    # Navigate to the final container
+    parts = trimmed_input_uri.split("/")
+    for part in parts:
+        if part not in processed_client.keys():
+            processed_client.create_container(part)
+        processed_client = processed_client[part]
+
+    # We already overwrote the file, we in principle only need to update metadata
+    # (not yet possible in this version)
+    if final_container in processed_client:
+        return
+
     adapter = HDF5Adapter.from_uri(ensure_uri(output_file_path))
+    # This will also include the function parameters
+    metadata = {**metadata, **adapter.metadata()}
+
+    # Todo extract stucture?
     processed_client.new(
-        key=output_uri,
+        key=final_container,
         structure_family=adapter.structure_family,
         data_sources=[
             DataSource(
                 management=Management.external,
                 mimetype="application/x-hdf5",
                 structure_family=adapter.structure_family,
-                structure=None,
+                structure=adapter.structure(),
                 assets=[
                     Asset(
                         data_uri=ensure_uri(output_file_path),
@@ -316,7 +342,7 @@ def add_1d_reduction_result_tiled(
                 ],
             ),
         ],
-        metadata={**metadata, **adapter.metadata()},
+        metadata=metadata,
         specs=adapter.specs,
     )
 
@@ -390,13 +416,20 @@ def write_1d_reduction_result_files_file_only(
     return output_file_path
 
 
+@flow
 def write_1d_reduction_result(
     input_uri_data, result_type, reduced_data, **function_parameters
 ):
     trimmed_input_uri = input_uri_data
     if "raw/" in trimmed_input_uri:
         trimmed_input_uri = trimmed_input_uri.replace("raw/", "")
-    if not WRITE_TILED_DIRECTLY:
+    logger = get_run_logger()
+    logger.info(
+        "Writing 1D reduction result to " + "Tiled directly"
+        if WRITE_TILED_MODE == "Tiled"
+        else "through files first."
+    )
+    if WRITE_TILED_MODE == "Files":
         output_file_path = write_1d_reduction_result_file(
             trimmed_input_uri,
             result_type,
@@ -405,7 +438,10 @@ def write_1d_reduction_result(
         )
         processed_client = client["processed"]
         add_1d_reduction_result_tiled(
-            processed_client, trimmed_input_uri, result_type, output_file_path
+            processed_client,
+            trimmed_input_uri,
+            result_type,
+            output_file_path,
         )
     else:
         write_1d_reduction_result_tiled(
