@@ -77,9 +77,12 @@ def filter_nans(data):
 
     """
 
-    # Find Nan in the intensity
-    nan_indices = np.isnan(data[1])
-    cleaned_data = tuple(array[~nan_indices] for array in data)
+    # Find masked values in the intensity array
+    if np.ma.is_masked(data[1]):
+        masked_indices = data[1].mask
+    else:
+        masked_indices = np.isnan(data[1])
+    cleaned_data = tuple(array[~masked_indices] for array in data)
     return cleaned_data
 
 
