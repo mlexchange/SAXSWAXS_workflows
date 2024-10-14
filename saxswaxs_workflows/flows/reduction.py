@@ -107,18 +107,18 @@ def pixel_roi_horizontal_sum(
 
     x_min = max(0, x_min)
     x_max = min(shape[1], x_max + 1)
-
+    y_min = max(0, int(beamcenter_y - cut_half_width))
+    y_max = min(shape[0], int(beamcenter_y + cut_half_width + 1))
+    print("Cutting image from", x_min, x_max, y_min, y_max)
     cut_data = masked_image[
-        max(0, beamcenter_y - cut_half_width) : min(
-            shape[0], beamcenter_y + cut_half_width + 1
-        ),
+        y_min:y_max,
         x_min:x_max,
     ]
 
-    cut_sum = np.sum(cut_data, axis=1)
+    cut_sum = np.sum(cut_data, axis=0)
     errors = np.sqrt(cut_sum)
 
-    pix = np.arange(x_min, x_max + 1)
+    pix = np.arange(x_min, x_max)
 
     if output_unit == "pixel":
         return (pix, cut_sum, errors)
@@ -149,8 +149,8 @@ def pixel_roi_horizontal_sum_tiled(
     wavelength: float,
     pix_size: float,
     cut_half_width: int,
-    y_min: int,
-    y_max: int,
+    x_min: int,
+    x_max: int,
     output_unit: str,
 ):
     function_parameters = locals().copy()
