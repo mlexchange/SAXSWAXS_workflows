@@ -40,11 +40,12 @@ def pixel_roi_vertical_sum(
     y_min = max(0, y_min)
     y_max = min(shape[0], y_max + 1)
 
+    x_min = max(0, int(beamcenter_x - cut_half_width))
+    x_max = min(shape[1], int(beamcenter_x + cut_half_width + 1))
+
     cut_data = masked_image[
         y_min:y_max,
-        max(0, int(beamcenter_x) - cut_half_width) : min(
-            shape[1], int(beamcenter_x) + cut_half_width + 1
-        ),
+        x_min:x_max,
     ]
 
     cut_sum = np.sum(cut_data, axis=1)
@@ -96,6 +97,7 @@ def pixel_roi_horizontal_sum(
     wavelength,
     pix_size,
     cut_half_width,
+    cut_y_pos,
     x_min,
     x_max,
     output_unit,
@@ -107,9 +109,9 @@ def pixel_roi_horizontal_sum(
 
     x_min = max(0, x_min)
     x_max = min(shape[1], x_max + 1)
-    y_min = max(0, int(beamcenter_y - cut_half_width))
-    y_max = min(shape[0], int(beamcenter_y + cut_half_width + 1))
-    print("Cutting image from", x_min, x_max, y_min, y_max)
+    y_min = max(0, int(cut_y_pos - cut_half_width))
+    y_max = min(shape[0], int(cut_y_pos + cut_half_width + 1))
+
     cut_data = masked_image[
         y_min:y_max,
         x_min:x_max,
@@ -125,7 +127,7 @@ def pixel_roi_horizontal_sum(
     else:
         pix = pix - beamcenter_x
         af = pix_to_alpha_f(
-            beamcenter_y,
+            beamcenter_y - cut_y_pos,
             sample_detector_dist,
             pix_size,
             incident_angle,
@@ -149,6 +151,7 @@ def pixel_roi_horizontal_sum_tiled(
     wavelength: float,
     pix_size: float,
     cut_half_width: int,
+    cut_y_pos: int,
     x_min: int,
     x_max: int,
     output_unit: str,
