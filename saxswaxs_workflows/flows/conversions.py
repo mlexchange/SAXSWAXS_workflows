@@ -166,14 +166,30 @@ def pix_to_theta_f(pixels, sdd, pix_size):
 
 
 def q_z(wl, a_f, a_i):
+    r"""Calculates the q_z component of the scattering vector.
+
+    .. math::
+    {q}_{z} = \frac{2 \pi}{\lambda} \sin(\alpha_f) + \sin(\alpha_i)
+    """
+
     return 2 * np.pi / wl * (np.sin(a_f / 180 * np.pi) + np.sin(a_i / 180 * np.pi))
 
 
 def q_y(wl, a_f, t_f):
+    r"""Calculates the q_y component of the scattering vector.
+
+    .. math::
+    {q}_{y} = \frac{2 \pi}{\lambda} \sin(\theta_f) \cos(\alpha_f)
+    """
     return 2 * np.pi / wl * np.sin(t_f / 180 * np.pi) * np.cos(a_f / 180 * np.pi)
 
 
 def q_x(wl, t_f, a_f, a_i):
+    r"""Calculates the q_x component of the scattering vector.
+
+    .. math::
+    {q}_{x} = \frac{2 \pi}{\lambda} (\cos(\alpha_f) * \cos(\theta_f) - \cos(\alpha_i))
+    """
     return (
         2
         * np.pi
