@@ -21,8 +21,8 @@ from file_handling import (
 from prefect import flow, get_run_logger
 
 
-@flow(name="vertical-sum")
-def pixel_roi_vertical_sum(
+@flow(name="vertical-cut")
+def pixel_roi_vertical_cut(
     masked_image,
     beamcenter_x,
     beamcenter_y,
@@ -48,25 +48,25 @@ def pixel_roi_vertical_sum(
         x_min:x_max,
     ]
 
-    cut_sum = np.sum(cut_data, axis=1)
-    errors = np.sqrt(cut_sum)
+    cut_average = np.average(cut_data, axis=1)
+    errors = np.sqrt(cut_average)
 
     pix = np.arange(y_min, y_max)
     if output_unit == "pixel":
-        return (pix, cut_sum, errors)
+        return (pix, cut_average, errors)
     else:
         # Set pixel coordinates in reference to beam center
         pix = pix - beamcenter_y
         af = pix_to_alpha_f(pix, sample_detector_dist, pix_size, incident_angle)
     if output_unit == "angle":
-        return (af, cut_sum, errors)
+        return (af, cut_average, errors)
     elif output_unit == "q":
         qz = q_z(wavelength, af, incident_angle)
-        return (qz, cut_sum, errors)
+        return (qz, cut_average, errors)
 
 
-@flow(name="pixel-roi-vertical-sum-tiled")
-def pixel_roi_vertical_sum_tiled(
+@flow(name="pixel-roi-vertical-cut-tiled")
+def pixel_roi_vertical_cut_tiled(
     input_uri_data: str,
     input_uri_mask: str,
     beamcenter_x: float,
@@ -82,13 +82,13 @@ def pixel_roi_vertical_sum_tiled(
 ):
     function_parameters = locals().copy()
     reduction_tiled_wrapper(
-        pixel_roi_vertical_sum,
+        pixel_roi_vertical_cut,
         **function_parameters,
     )
 
 
-@flow(name="horizontal-sum")
-def pixel_roi_horizontal_sum(
+@flow(name="horizontal-cut")
+def pixel_roi_horizontal_cut(
     masked_image,
     beamcenter_x,
     beamcenter_y,
@@ -97,7 +97,7 @@ def pixel_roi_horizontal_sum(
     wavelength,
     pix_size,
     cut_half_width,
-    cut_y_pos,
+    cut_pos_y,
     x_min,
     x_max,
     output_unit,
@@ -109,39 +109,39 @@ def pixel_roi_horizontal_sum(
 
     x_min = max(0, x_min)
     x_max = min(shape[1], x_max + 1)
-    y_min = max(0, int(cut_y_pos - cut_half_width))
-    y_max = min(shape[0], int(cut_y_pos + cut_half_width + 1))
+    y_min = max(0, int(cut_pos_y - cut_half_width))
+    y_max = min(shape[0], int(cut_pos_y + cut_half_width + 1))
 
     cut_data = masked_image[
         y_min:y_max,
         x_min:x_max,
     ]
 
-    cut_sum = np.sum(cut_data, axis=0)
-    errors = np.sqrt(cut_sum)
+    cut_average = np.average(cut_data, axis=0)
+    errors = np.sqrt(cut_average)
 
     pix = np.arange(x_min, x_max)
 
     if output_unit == "pixel":
-        return (pix, cut_sum, errors)
+        return (pix, cut_average, errors)
     else:
         pix = pix - beamcenter_x
         af = pix_to_alpha_f(
-            beamcenter_y - cut_y_pos,
+            beamcenter_y - cut_pos_y,
             sample_detector_dist,
             pix_size,
             incident_angle,
         )
         tf = pix_to_theta_f(pix, sample_detector_dist, pix_size)
     if output_unit == "angle":
-        return (tf, cut_sum, errors)
+        return (tf, cut_average, errors)
     elif output_unit == "q":
         qp = q_parallel(wavelength, tf, af, incident_angle)
-        return (qp, cut_sum, errors)
+        return (qp, cut_average, errors)
 
 
-@flow(name="pixel-roi-horizontal-sum-tiled")
-def pixel_roi_horizontal_sum_tiled(
+@flow(name="pixel-roi-horizontal-cut-tiled")
+def pixel_roi_horizontal_cut_tiled(
     input_uri_data: str,
     input_uri_mask: str,
     beamcenter_x: float,
@@ -151,14 +151,14 @@ def pixel_roi_horizontal_sum_tiled(
     wavelength: float,
     pix_size: float,
     cut_half_width: int,
-    cut_y_pos: int,
+    cut_pos_y: int,
     x_min: int,
     x_max: int,
     output_unit: str,
 ):
     function_parameters = locals().copy()
     reduction_tiled_wrapper(
-        pixel_roi_horizontal_sum,
+        pixel_roi_horizontal_cut,
         **function_parameters,
     )
 
