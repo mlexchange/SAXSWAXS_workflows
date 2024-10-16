@@ -2,7 +2,13 @@ import math
 import time
 
 from astropy.modeling import fitting, models
-from file_handling import read_reduction, write_fitting
+
+from file_handling import (
+    read_reduction,
+    read_reduction_tiled,
+    write_fitting_fio,
+    write_fitting_tiled,
+)
 
 from prefect import flow, task
 
@@ -159,7 +165,31 @@ def simple_peak_fit_files(
         x_data, y_data, x_peaks, y_peaks, stddevs, fwhm_Gs, fwhm_Ls, peak_shape
     )
 
-    write_fitting(input_file_reduction, fitted_x_peaks, fitted_y_peaks, fitted_fwhms)
+    write_fitting_fio(
+        input_file_reduction, fitted_x_peaks, fitted_y_peaks, fitted_fwhms
+    )
+
+
+@flow(name="simple_peak_fit_tiled")
+def simple_peak_fit_tiled(
+    input_uri_reduction,
+    x_peaks,
+    y_peaks,
+    stddevs,
+    fwhm_Gs,
+    fwhm_Ls,
+    peak_shape,
+    fit_range,
+):
+    x_data, y_data = read_reduction_tiled(input_uri_reduction, fit_range)
+
+    fitted_x_peaks, fitted_y_peaks, fitted_fwhms = simple_peak_fit(
+        x_data, y_data, x_peaks, y_peaks, stddevs, fwhm_Gs, fwhm_Ls, peak_shape
+    )
+
+    write_fitting_tiled(
+        input_uri_reduction, fitted_x_peaks, fitted_y_peaks, fitted_fwhms
+    )
 
 
 if __name__ == "__main__":
@@ -172,5 +202,21 @@ if __name__ == "__main__":
         "fwhm_Ls": [0.01],
         "peak_shape": "gaussian",
     }
+    # simple_peak_fit_files(**parameters)
 
-    simple_peak_fit_files(**parameters)
+    q_target = 2 * 3.14 / (30) * 0.1
+    processed_uri = (
+        "processed/ALS-S2VP42/218_A0p160_A0p160_sfloat_2m/"
+        + "218_A0p160_A0p160_sfloat_2m_horizontal-cut"
+    )
+    parameters_fitting = {
+        "input_uri_reduction": processed_uri,
+        "x_peaks": [0, q_target],
+        "y_peaks": [1000, 1000],
+        "stddevs": [0.01, 0.01],
+        "fwhm_Gs": [0.01, 0.01],
+        "fwhm_Ls": [0.01, 0.01],
+        "peak_shape": "gaussian",
+    }
+
+    simple_peak_fit_tiled(**parameters_fitting)

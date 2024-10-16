@@ -7,6 +7,7 @@ import h5py
 import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
+from tiled.adapters.csv import read_csv
 
 # from prefect.tasks import task_input_hash
 from tiled.adapters.hdf5 import HDF5Adapter
@@ -321,6 +322,8 @@ def write_1d_reduction_result_file(
 
     output_file_path = os.path.join(current_folder, f"{parts[-1]}_{result_type}.h5")
 
+    if os.path.exists(output_file_path):
+        print(f"File {output_file_path} already exist.")
     output_file = h5py.File(output_file_path, "w")
 
     # default: q
@@ -500,8 +503,30 @@ def read_reduction(input_file_path):
 
     y_data = np.array(input_file["intensity"])
     x_data = np.array(input_file["q"])
+    # In case the data is not sorted
+    x_data, y_data = zip(*sorted(zip(x_data, y_data)))
 
     input_file.close()
+
+    return x_data, y_data
+
+
+def read_reduction_tiled(reduction_uri, fit_range=None):
+    reduction_client = from_uri(TILED_BASE_URI + reduction_uri)
+    x_data = reduction_client["q"][:]
+    y_data = reduction_client["intensity"][:]
+
+    # In case the data is not sorted according to increasing q,
+    # e.g. due to cutting on both sides of beam center
+    x_data, y_data = zip(*sorted(zip(x_data, y_data)))
+    x_data = np.array(x_data)
+    y_data = np.array(y_data)
+
+    # Filter x_data and y_data to the fit_range
+    if fit_range is not None and len(fit_range) == 2:
+        within_range = (x_data >= fit_range[0]) & (x_data <= fit_range[1])
+        x_data = x_data[within_range]
+        y_data = y_data[within_range]
 
     return x_data, y_data
 
@@ -525,7 +550,7 @@ def fio_file_from_scan(input_file_path):
 
 
 @task
-def write_fitting(input_file_path, fitted_x_peaks, fitted_y_peaks, fitted_fwhms):
+def write_fitting_fio(input_file_path, fitted_x_peaks, fitted_y_peaks, fitted_fwhms):
     fio_file = fio_file_from_scan(input_file_path)
     print("Fio-file", fio_file)
     if fio_file:
@@ -554,6 +579,69 @@ def write_fitting(input_file_path, fitted_x_peaks, fitted_y_peaks, fitted_fwhms)
     )
 
     df.to_csv(output_file_path, index=False)
+
+
+def write_fitting_tiled(
+    trimmed_input_uri, fitted_x_peaks, fitted_y_peaks, fitted_fwhms
+):
+    parts = trimmed_input_uri.split("/")
+    trimmed_output_uri = "/".join(parts[:-1])
+    output_parent_client = from_uri(
+        TILED_BASE_URI + trimmed_output_uri, api_key=TILED_API_KEY
+    )
+    output_key = f"{parts[-2]}_fitted-peaks"
+    trimmed_output_uri = "/".join([trimmed_output_uri, output_key])
+
+    input_file_path = os.path.join(
+        PATH_TO_PROCESSED_DATA, trimmed_input_uri.replace("processed/", "") + ".h5"
+    )
+    if not os.path.exists(input_file_path):
+        print("File does not exist:", input_file_path)
+    output_file_path = os.path.join(
+        PATH_TO_PROCESSED_DATA,
+        trimmed_output_uri.replace("processed/", "") + ".csv",
+    )
+    print("Writing fitted peaks to", output_file_path)
+
+    df = pd.DataFrame(
+        {
+            "x": fitted_x_peaks,
+            "y": fitted_y_peaks,
+            "fwhm": fitted_fwhms,
+        }
+    )
+
+    df.to_csv(output_file_path, index=False)
+
+    if output_key in output_parent_client:
+        return
+
+    adapter = read_csv(ensure_uri(output_file_path))
+    # This will also include the function parameters
+    metadata = {"input_uri": trimmed_input_uri}
+    metadata = {**metadata, **adapter.metadata()}
+
+    output_parent_client.new(
+        key=output_key,
+        structure_family=adapter.structure_family,
+        data_sources=[
+            DataSource(
+                management=Management.external,
+                mimetype="text/csv",
+                structure_family=adapter.structure_family,
+                structure=adapter.structure(),
+                assets=[
+                    Asset(
+                        data_uri=ensure_uri(output_file_path),
+                        is_directory=False,
+                        parameter="data_uri",
+                    )
+                ],
+            ),
+        ],
+        metadata=metadata,
+        specs=adapter.specs,
+    )
 
 
 def write_gp_mean(first_file_name, counter, x, y, f, gp_x, gp_y):
