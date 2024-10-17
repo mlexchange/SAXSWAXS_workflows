@@ -6,6 +6,7 @@ import fabio
 import h5py
 import numpy as np
 import pandas as pd
+from BaselineRemoval import BaselineRemoval
 from dotenv import load_dotenv
 from tiled.adapters.csv import read_csv
 
@@ -511,14 +512,16 @@ def read_reduction(input_file_path):
     return x_data, y_data
 
 
-def read_reduction_tiled(reduction_uri, fit_range=None):
+def read_reduction_tiled(reduction_uri, fit_range=None, baseline_removal=True):
     reduction_client = from_uri(TILED_BASE_URI + reduction_uri)
     x_data = reduction_client["q"][:]
     y_data = reduction_client["intensity"][:]
-
+    num_points = x_data.size
     # In case the data is not sorted according to increasing q,
     # e.g. due to cutting on both sides of beam center
-    x_data, y_data = zip(*sorted(zip(x_data, y_data)))
+    # x_data, y_data = zip(*sorted(zip(x_data, y_data)))
+    x_data = x_data[int(num_points / 2) + 1 :]
+    y_data = y_data[int(num_points / 2) + 1 :]
     x_data = np.array(x_data)
     y_data = np.array(y_data)
 
@@ -527,6 +530,10 @@ def read_reduction_tiled(reduction_uri, fit_range=None):
         within_range = (x_data >= fit_range[0]) & (x_data <= fit_range[1])
         x_data = x_data[within_range]
         y_data = y_data[within_range]
+
+    if baseline_removal:
+        baseline_correction_obj = BaselineRemoval(y_data)
+        y_data = baseline_correction_obj.ZhangFit()
 
     return x_data, y_data
 

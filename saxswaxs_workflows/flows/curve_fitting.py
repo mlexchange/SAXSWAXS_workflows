@@ -2,7 +2,6 @@ import math
 import time
 
 from astropy.modeling import fitting, models
-
 from file_handling import (
     read_reduction,
     read_reduction_tiled,
@@ -44,11 +43,15 @@ def _fit_gaussian(x_data, y_data, x_peaks, y_peaks, stddevs):
         if ii == 0:
             g = models.Gaussian1D(amplitude=y_peak, mean=x_peak, stddev=stddev)
             # Fix peak at 0
-            g.mean.fixed = True
+            # g.mean.fixed = True
+            # Restrict ampliture to be positive
+            g.amplitude.min = 0
             sum_models = g
         else:
             g = models.Gaussian1D(amplitude=y_peak, mean=x_peak, stddev=stddev)
             sum_models += g
+            # Restrict ampliture to be positive
+            g.amplitude.min = 0
         partial_fits.append(g)
     fitter = fitting.LevMarLSQFitter()
     try:
@@ -179,9 +182,12 @@ def simple_peak_fit_tiled(
     fwhm_Gs,
     fwhm_Ls,
     peak_shape,
-    fit_range,
+    fit_range=None,
+    baseline_removal=False,
 ):
-    x_data, y_data = read_reduction_tiled(input_uri_reduction, fit_range)
+    x_data, y_data = read_reduction_tiled(
+        input_uri_reduction, fit_range, baseline_removal
+    )
 
     fitted_x_peaks, fitted_y_peaks, fitted_fwhms = simple_peak_fit(
         x_data, y_data, x_peaks, y_peaks, stddevs, fwhm_Gs, fwhm_Ls, peak_shape
