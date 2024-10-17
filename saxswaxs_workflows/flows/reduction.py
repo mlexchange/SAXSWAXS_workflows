@@ -435,5 +435,20 @@ if __name__ == "__main__":
         "num_bins": 800,
         "output_unit": "q",
     }
-    parameters_azimuthal["output_unit"] = "q"
-    integrate1d_azimuthal_tiled(**parameters_azimuthal)
+    # integrate1d_azimuthal_tiled(**parameters_azimuthal)
+    parameters_horizontal = {
+        "input_uri_data": "raw/ALS-S2VP42/218_A0p160_A0p160_sfloat_2m",
+        "input_uri_mask": "processed/masks/ALS_BCP_Mixing_inverted",
+        "beamcenter_x": 670.976,
+        "beamcenter_y": 1180.42,
+        "incident_angle": 0.16,
+        "sample_detector_dist": 3513.21,
+        "wavelength": 1.2398,
+        "pix_size": 172,
+        "cut_half_width": 10,
+        "cut_pos_y": 1180 - 105,
+        "x_min": 670 - 250,
+        "x_max": 670 + 250,
+        "output_unit": "q",
+    }
+    pixel_roi_horizontal_cut_tiled(**parameters_horizontal)
