@@ -22,7 +22,9 @@ Create a file `.env` with the following content
 TILED_URI="http://127.0.0.1:8888"
 PREFECT_API_URL="http://127.0.0.1:4200/api"
 TILED_API_KEY="<randomly generated key>"
-PATH_TO_DATA="<path to folder that has structure as beamtime (with subfolders /raw, /processed/ ...)>"
+PATH_TO_DATA="<path to folder that contains raw data>"
+PATH_TO_PROCESSED_DATA="<path to folder where processed data can be written>"
+PREFECT_WORK_DIR="<path to folder where this code resides>"
 ```
 
 ## Prefect Server
