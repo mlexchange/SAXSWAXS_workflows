@@ -1,4 +1,7 @@
+from datetime import timedelta
+
 import numpy as np
+from prefect.tasks import task_input_hash
 from pyFAI.azimuthalIntegrator import AzimuthalIntegrator
 
 from prefect import task
@@ -7,7 +10,7 @@ from prefect import task
 # https://github.com/CFN-softbio/SciAnalysis/XSAnalysis/Data.py#L990
 
 
-@task
+@task(cache_key_fn=task_input_hash, cache_expiration=timedelta(days=1))
 def get_azimuthal_integrator(
     beamcenter_x,
     beamcenter_y,
@@ -16,6 +19,8 @@ def get_azimuthal_integrator(
     tilt,
     rotation,
     pix_size,
+    detector_x=1679,
+    detector_y=1475,
 ):
     """
     Returns an integrator object for the given Fit2d geometry.
@@ -57,6 +62,10 @@ def get_azimuthal_integrator(
         pixelY=pix_size,
         wavelength=wavelength,
     )
+
+    # Integrate an empty image in order to cache q-space conversion
+    empty_image = np.zeros((detector_x, detector_y))
+    azimuthal_integrator.integrate1d(empty_image, npt=1024)
 
     return azimuthal_integrator
 

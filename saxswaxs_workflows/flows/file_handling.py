@@ -1,6 +1,7 @@
 import os
 import pathlib
 import re
+from datetime import timedelta
 
 import fabio
 import h5py
@@ -8,9 +9,8 @@ import numpy as np
 import pandas as pd
 from BaselineRemoval import BaselineRemoval
 from dotenv import load_dotenv
+from prefect.tasks import task_input_hash
 from tiled.adapters.csv import read_csv
-
-# from prefect.tasks import task_input_hash
 from tiled.adapters.hdf5 import HDF5Adapter
 from tiled.client import from_uri
 from tiled.structures.array import ArrayStructure, BuiltinDtype
@@ -26,6 +26,7 @@ PATH_TO_RAW_DATA = os.getenv("PATH_TO_DATA")
 PATH_TO_PROCESSED_DATA = os.getenv("PATH_TO_PROCESSED_DATA")
 
 if not os.path.isdir(PATH_TO_PROCESSED_DATA):
+    print(PATH_TO_PROCESSED_DATA)
     path = os.path.normpath(PATH_TO_PROCESSED_DATA)
     path.mkdir(parents=True, exist_ok=True)
 
@@ -211,7 +212,7 @@ def open_mask(mask_path):
     return fabio.open(mask_path).data
 
 
-@task
+@task(cache_key_fn=task_input_hash, cache_expiration=timedelta(days=1))
 def read_array_tiled(array_uri):
     return from_uri(TILED_BASE_URI + array_uri)[:]
 
