@@ -1,6 +1,7 @@
 import math
 import time
 
+import numpy as np
 from astropy.modeling import fitting, models
 from file_handling import (
     read_reduction,
@@ -42,8 +43,8 @@ def _fit_gaussian(x_data, y_data, x_peaks, y_peaks, stddevs):
     for ii, (x_peak, y_peak, stddev) in enumerate(zip(x_peaks, y_peaks, stddevs)):
         if ii == 0:
             g = models.Gaussian1D(amplitude=y_peak, mean=x_peak, stddev=stddev)
-            # Fix peak at 0
-            # g.mean.fixed = True
+            # Restrict peak at minimum
+            g.mean.max = np.min(x_data)
             # Restrict ampliture to be positive
             g.amplitude.min = 0
             sum_models = g
