@@ -213,7 +213,7 @@ def q_x(wl, t_f, a_f, a_i):
 def q_parallel(wl, t_f, a_f, a_i):
     qy = q_y(wl, a_f, t_f)
     qx = q_x(wl, t_f, a_f, a_i)
-    return np.sqrt(qx**2 + qy**2)
+    return np.sign(qy) * np.sqrt(qx**2 + qy**2)
 
 
 def qp_to_pix(q, wl, a_f, a_i, sdd, pix_size):
