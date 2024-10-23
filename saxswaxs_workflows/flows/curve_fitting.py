@@ -184,7 +184,7 @@ def simple_peak_fit_tiled(
     fwhm_Ls,
     peak_shape,
     fit_range=None,
-    baseline_removal=False,
+    baseline_removal="linear",
 ):
     x_data, y_data = read_reduction_tiled(
         input_uri_reduction, fit_range, baseline_removal

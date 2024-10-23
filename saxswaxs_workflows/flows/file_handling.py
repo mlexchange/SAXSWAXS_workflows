@@ -534,9 +534,21 @@ def read_reduction_tiled(reduction_uri, fit_range=None, baseline_removal=True):
         x_data = x_data[within_range]
         y_data = y_data[within_range]
 
-    if baseline_removal:
-        baseline_correction_obj = BaselineRemoval(y_data)
-        y_data = baseline_correction_obj.ZhangFit()
+    if baseline_removal is not None:
+        if baseline_removal == "zhang":
+            baseline_correction_obj = BaselineRemoval(y_data)
+            y_data = baseline_correction_obj.ZhangFit()
+        elif baseline_removal == "modpoly":
+            baseline_correction_obj = BaselineRemoval(y_data)
+            y_data = baseline_correction_obj.ModPoly(2)
+        elif baseline_removal == "linear":
+            slope = (y_data[-1] - y_data[0]) / (x_data[-1] - x_data[0])
+            intercept = y_data[0] - slope * x_data[0]
+            # Subtract line
+            y_data = y_data - (x_data * slope + intercept)
+
+    # Normalize y_data
+    # y_data = (y_data - np.min(y_data)) / (np.max(y_data) - np.min(y_data))
 
     return x_data, y_data
 
