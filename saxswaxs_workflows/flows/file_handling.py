@@ -334,7 +334,6 @@ def write_1d_reduction_result_file(
         if key == "output_unit":
             output_unit = value
         output_file.attrs[key] = value
-    output_file.attrs["input_uri"] = trimmed_input_uri
 
     q = data[0]
     intensity = data[1]
@@ -528,14 +527,6 @@ def read_reduction_tiled(reduction_uri, fit_range=None, baseline_removal=True):
     reduction_client = from_uri(TILED_BASE_URI + reduction_uri)
     x_data = reduction_client["q"][:]
     y_data = reduction_client["intensity"][:]
-    num_points = x_data.size
-    # In case the data is not sorted according to increasing q,
-    # e.g. due to cutting on both sides of beam center
-    # x_data, y_data = zip(*sorted(zip(x_data, y_data)))
-    x_data = x_data[int(num_points / 2) + 1 :]
-    y_data = y_data[int(num_points / 2) + 1 :]
-    x_data = np.array(x_data)
-    y_data = np.array(y_data)
 
     # Filter x_data and y_data to the fit_range
     if fit_range is not None and len(fit_range) == 2:
