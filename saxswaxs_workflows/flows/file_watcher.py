@@ -8,6 +8,7 @@ from pathlib import Path
 import watchgod
 from dotenv import load_dotenv
 from file_handling import PATH_TO_RAW_DATA, TILED_BASE_URI, add_scan_tiled
+from latentspace import schedule_latent_space_reduction
 
 from prefect import get_client
 
@@ -54,6 +55,9 @@ async def post_file_created(dataset_path):
             deployment_id="85e74c1b-04d9-4cfe-b3b1-e667301906b2",
             parameters=(parameters),
         )
+    # Extract last part of uri and schedule latent_space_reductions
+    logger.info(f"Scheduling flows with {input_file_uri}")
+    await schedule_latent_space_reduction(input_file_uri)
 
 
 async def watch_directory():
