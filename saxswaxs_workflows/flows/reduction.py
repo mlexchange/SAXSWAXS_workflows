@@ -1,6 +1,8 @@
 import inspect
+import json
 
 import numpy as np
+import zmq
 from conversions import (
     filter_nans,
     get_azimuthal_integrator,
@@ -19,6 +21,13 @@ from file_handling import (
 )
 
 from prefect import flow, get_run_logger
+
+host = "127.0.0.1"
+port = "5001"
+
+context = zmq.Context()
+socket = context.socket(zmq.PUB)
+socket.connect("tcp://{}:{}".format(host, port))
 
 
 @flow(name="vertical-cut")
@@ -364,12 +373,17 @@ def reduction_tiled_wrapper(
 
     logger.debug(f"Saving {function_to_wrap.name} reduction for: {input_uri_data}")
 
-    write_1d_reduction_result(
+    result_uri = write_1d_reduction_result(
         input_uri_data,
         function_to_wrap.name,
         reduced_data,
         **function_parameters,
     )
+    logger = get_run_logger()
+    logger.info(f"Sending message about reduction finishing for {result_uri}")
+    notification_new_reduction = {"reduction_uri": result_uri}
+    # Send a message over ZMQ to someone reacting to reduction outputs
+    socket.send(json.dumps(notification_new_reduction).encode())
 
 
 def reduction_files_wrapper(

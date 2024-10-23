@@ -336,8 +336,15 @@ def write_1d_reduction_result_file(
         output_file.attrs[key] = value
     output_file.attrs["input_uri"] = trimmed_input_uri
 
-    output_file.create_dataset(output_unit, data=data[0])
-    output_file.create_dataset("intensity", data=data[1])
+    q = data[0]
+    intensity = data[1]
+    output_file.attrs["input_uri"] = TILED_BASE_URI + "raw/" + trimmed_input_uri
+    output_file.attrs["max_intensity"] = np.max(intensity)
+    output_file.attrs["max_intensity_q"] = q[np.argmax(intensity)]
+    output_file.attrs["area_under_curve"] = np.trapz(y=intensity)
+
+    output_file.create_dataset(output_unit, data=q)
+    output_file.create_dataset("intensity", data=intensity)
     if len(data) > 2:
         output_file.create_dataset("errors", data=data[2])
     return output_file_path
@@ -364,7 +371,7 @@ def add_1d_reduction_result_tiled(
     # We already overwrote the file, we in principle only need to update metadata
     # (not yet possible in this version)
     if final_container in processed_client:
-        return
+        return processed_client[final_container].uri
 
     adapter = HDF5Adapter.from_uri(ensure_uri(output_file_path))
     # This will also include the function parameters
@@ -392,6 +399,8 @@ def add_1d_reduction_result_tiled(
         metadata=metadata,
         specs=adapter.specs,
     )
+
+    return processed_client[final_container].uri
 
 
 @task
@@ -426,6 +435,7 @@ def write_1d_reduction_result_tiled(
     processed_client.write_array(key="intensity", array=data[1])
     if len(data) > 2:
         processed_client.write_array(key="errors", array=data[2])
+    return processed_client.uri
 
 
 # This should be following a standard
@@ -484,20 +494,21 @@ def write_1d_reduction_result(
             **function_parameters,
         )
         processed_client = client["processed"]
-        add_1d_reduction_result_tiled(
+        result_uri = add_1d_reduction_result_tiled(
             processed_client,
             trimmed_input_uri,
             result_type,
             output_file_path,
         )
     else:
-        write_1d_reduction_result_tiled(
+        result_uri = write_1d_reduction_result_tiled(
             client["processed"],
             trimmed_input_uri,
             result_type,
             reduced_data,
             **function_parameters,
         )
+    return result_uri
 
 
 def read_reduction(input_file_path):
@@ -662,6 +673,62 @@ def write_gp_mean(first_file_name, counter, x, y, f, gp_x, gp_y):
     output_file.create_dataset("gp_mean", data=f)
     output_file.create_dataset("gp_x", data=gp_x)
     output_file.create_dataset("gp_y", data=gp_y)
+
+
+def write_gp_mean_tiled(experiment_uri, counter, x, y, f, gp_x, gp_y, hyperparameters):
+    # Find file location
+    current_folder = PATH_TO_PROCESSED_DATA
+    trimmed_experiment_uri = experiment_uri.replace(TILED_BASE_URI, "")
+    trimmed_experiment_uri = experiment_uri.replace("processed/", "")
+    parts = trimmed_experiment_uri.split("/")
+    parts.append("gp")
+    for part in parts:
+        current_folder = os.path.join(current_folder, part)
+        if not os.path.isdir(current_folder):
+            os.mkdir(current_folder)
+
+    output_file_path = os.path.join(current_folder, f"gp_posterior_mean_{counter}.h5")
+    print(output_file_path)
+    output_file = h5py.File(output_file_path, "w")
+
+    output_file.create_dataset("x", data=x)
+    output_file.create_dataset("y", data=y)
+    output_file.create_dataset("gp_mean", data=f)
+    output_file.create_dataset("gp_x", data=gp_x)
+    output_file.create_dataset("gp_y", data=gp_y)
+    output_file.create_dataset("gp_hyerparameters", data=hyperparameters)
+
+    adapter = HDF5Adapter.from_uri(ensure_uri(output_file_path))
+    # This will also include the function parameters
+    metadata = {**adapter.metadata()}
+
+    processed_client = from_uri(experiment_uri)
+    if "gp" not in processed_client.keys():
+        processed_client = processed_client.create_container("gp")
+    else:
+        processed_client = processed_client["gp"]
+
+    processed_client.new(
+        key=f"gp_posterior_mean_{counter}",
+        structure_family=adapter.structure_family,
+        data_sources=[
+            DataSource(
+                management=Management.external,
+                mimetype="application/x-hdf5",
+                structure_family=adapter.structure_family,
+                structure=adapter.structure(),
+                assets=[
+                    Asset(
+                        data_uri=ensure_uri(output_file_path),
+                        is_directory=False,
+                        parameter="data_uri",
+                    )
+                ],
+            ),
+        ],
+        metadata=metadata,
+        specs=adapter.specs,
+    )
 
 
 if __name__ == "__main__":
