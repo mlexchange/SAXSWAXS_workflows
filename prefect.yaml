@@ -42,22 +42,22 @@ deployments:
     work_queue_name:
     job_variables: {}
   schedule:
-- name: vertical-sum
+- name: vertical-cut
   version:
   tags: []
   description:
-  entrypoint: saxswaxs_workflows/flows/reduction.py:pixel_roi_vertical_sum_tiled
+  entrypoint: saxswaxs_workflows/flows/reduction.py:pixel_roi_vertical_cut_tiled
   parameters: {}
   work_pool:
     name: reduction-pool
     work_queue_name:
     job_variables: {}
   schedule:
-- name: horizontal-sum
+- name: horizontal-cut
   version:
   tags: []
   description:
-  entrypoint: saxswaxs_workflows/flows/reduction.py:pixel_roi_horizontal_sum_tiled
+  entrypoint: saxswaxs_workflows/flows/reduction.py:pixel_roi_horizontal_cut_tiled
   parameters: {}
   work_pool:
     name: reduction-pool
