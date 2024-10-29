@@ -10,8 +10,8 @@ from prefect.client.schemas.filters import (
 )
 
 
-def get_client():
-    return PrefectClient(api="http://127.0.0.1:4220/api")
+def get_client(port=4200):
+    return PrefectClient(api=f"http://127.0.0.1:{port}/api")
 
 
 async def _schedule(
@@ -19,8 +19,9 @@ async def _schedule(
     flow_run_name: str,
     parameters: Optional[dict] = None,
     tags: Optional[list] = [],
+    port: Optional[int] = 4200,
 ):
-    async with get_client() as client:
+    async with get_client(port) as client:
         deployment = await client.read_deployment_by_name(deployment_name)
         assert (
             deployment
@@ -39,12 +40,13 @@ def schedule_prefect_flow(
     parameters: Optional[dict] = None,
     flow_run_name: Optional[str] = None,
     tags: Optional[list] = [],
+    port: Optional[int] = 4200,
 ):
     if not flow_run_name:
         model_name = parameters["model_name"]
         flow_run_name = f"{deployment_name}: {model_name}"
     flow_run_id = asyncio.run(
-        _schedule(deployment_name, flow_run_name, parameters, tags)
+        _schedule(deployment_name, flow_run_name, parameters, tags, port)
     )
     return flow_run_id
 
