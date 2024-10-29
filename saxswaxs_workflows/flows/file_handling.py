@@ -278,12 +278,18 @@ def add_scan_tiled(scan_filepath):
         current_container_client.delete(key)
 
     structure = ArrayStructure(
-        data_type=BuiltinDtype.from_numpy_dtype(np.dtype("int32")),
+        data_type=BuiltinDtype.from_numpy_dtype(
+            np.dtype("float32") if scan_filepath.endswith(".gb") else np.dtype("int32")
+        ),
         shape=(1679, 1475),
         chunks=((1679,), (1475,)),
     )
 
-    metadata = parse_txt_accompanying_edf(scan_filepath)
+    if scan_filepath(".edf"):
+        metadata = parse_txt_accompanying_edf(scan_filepath)
+    else:
+        metadata = {}
+
     # TODO: Add metadata and spec
 
     scan_client = current_container_client.new(
@@ -292,7 +298,11 @@ def add_scan_tiled(scan_filepath):
         data_sources=[
             DataSource(
                 management=Management.external,
-                mimetype="application/x-edf",
+                mimetype=(
+                    "application/x-gb"
+                    if scan_filepath.endswith(".gb")
+                    else "application/x-edf"
+                ),
                 structure_family=StructureFamily.array,
                 structure=structure,
                 assets=[
@@ -305,7 +315,7 @@ def add_scan_tiled(scan_filepath):
             ),
         ],
         metadata=metadata,
-        specs=[Spec("edf")],
+        specs=[Spec("gb") if scan_filepath.endswith(".gb") else Spec("edf")],
     )
     return scan_client.uri
 
