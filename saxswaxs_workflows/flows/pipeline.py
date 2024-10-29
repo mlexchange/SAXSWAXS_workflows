@@ -1,7 +1,7 @@
 import inspect
 
-from curve_fitting import simple_peak_fit_files
-from reduction import integrate1d_azimuthal_files
+from curve_fitting import automatic_peak_fit_tiled, simple_peak_fit_files
+from reduction import integrate1d_azimuthal_files, pixel_roi_horizontal_cut_tiled
 
 from prefect import flow
 
@@ -52,6 +52,44 @@ def two_step_pipeline(
     simple_peak_fit_files(**parameters_fitting)
 
 
+@flow(name="horizontal_cut_automatic_fit")
+def horizontal_cut_automatic_fit(
+    input_uri_data: str,
+    input_uri_mask: str,
+    beamcenter_x: float,
+    beamcenter_y: float,
+    incident_angle: float,
+    sample_detector_dist: float,
+    wavelength: float,
+    pix_size: float,
+    cut_half_width: int,
+    cut_pos_y: int,
+    x_min: int,
+    x_max: int,
+    output_unit: str,
+    fit_range=[0.005, 0.035],
+    baseline_removal="zhang",
+):
+    parameters = locals().copy()
+
+    parameters_reduction = dict()
+    required_parameters_reduction = inspect.signature(
+        pixel_roi_horizontal_cut_tiled
+    ).parameters
+    parameters_fitting = dict()
+    required_parameters_fitting = inspect.signature(automatic_peak_fit_tiled).parameters
+
+    for param in parameters:
+        if param in required_parameters_reduction:
+            parameters_reduction[param] = parameters[param]
+        if param in required_parameters_fitting:
+            parameters_fitting[param] = parameters[param]
+
+    pixel_roi_horizontal_cut_tiled(**parameters_reduction)
+    parameters_fitting["reduction_type"] = "horizontal-cut"
+    automatic_peak_fit_tiled(**parameters_fitting)
+
+
 if __name__ == "__main__":
     parameters = {
         "input_file_data": r"Y:....\bs_pksample_c_gpcam_test_00022_00001.cbf",
@@ -77,4 +115,23 @@ if __name__ == "__main__":
         "fwhm_Ls": [0.01],
         "peak_shape": "gaussian",
     }
-    two_step_pipeline(**parameters)
+    # two_step_pipeline(**parameters)
+
+    parameters = {
+        "input_uri_data": "raw/2024_10_23/New_Batch/Data__B2_2_A0p120_sfloat_2m",
+        "input_uri_mask": "processed/masks/2024_10_17_GISAXS_YW_inverted",
+        "beamcenter_x": 691.007,
+        "beamcenter_y": 1281.21,
+        "incident_angle": 0.12,
+        "sample_detector_dist": 3590.48,
+        "wavelength": 1.2398,
+        "pix_size": 172,
+        "cut_half_width": 5,
+        "cut_pos_y": 1176,
+        "x_min": 391,
+        "x_max": 991,
+        "output_unit": "q",
+        "fit_range": [0.005, 0.035],
+        "baseline_removal": "zhang",
+    }
+    horizontal_cut_automatic_fit(**parameters)

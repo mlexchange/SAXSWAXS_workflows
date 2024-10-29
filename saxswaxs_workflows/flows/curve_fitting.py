@@ -9,6 +9,7 @@ from file_handling import (
     write_fitting_fio,
     write_fitting_tiled,
 )
+from scipy.signal import argrelmin, find_peaks, peak_prominences
 
 from prefect import flow, task
 
@@ -75,7 +76,8 @@ def _fit_voigt(x_data, y_data, x_peaks, y_peaks, fwhm_Ls, fwhm_Gs):
                 amplitude_L=y_peak, x_0=x_peak, fwhm_L=fwhm_L, fwhm_G=fwhm_G
             )
             # Fix peak at 0
-            g.x_0.fixed = True
+            # g.x_0.fixed = True
+            g.mean.max = np.min(x_data)
             sum_models = g
         else:
             g = models.Voigt1D(
@@ -197,6 +199,62 @@ def simple_peak_fit_tiled(
     write_fitting_tiled(
         input_uri_reduction, fitted_x_peaks, fitted_y_peaks, fitted_fwhms
     )
+
+
+@flow(name="automatic_peak_fit_tiled")
+def automatic_peak_fit_tiled(
+    input_uri_data,
+    reduction_type,
+    q_target=2 * np.pi / (30) * 0.1,
+    fit_range=None,
+    baseline_removal=None,
+):
+    reduced_uri = input_uri_data.replace("raw", "processed")
+    parts = reduced_uri.split("/")
+    reduced_uri = f"{reduced_uri}/{parts[-1]}_{reduction_type}"
+    print(reduced_uri)
+
+    q, intensity = read_reduction_tiled(
+        reduced_uri,
+        fit_range=fit_range,
+        baseline_removal=None,
+    )
+
+    if fit_range is None:
+        fit_range_min = np.min(q)
+        fit_range_max = np.max(q)
+    else:
+        fit_range_min = fit_range[0]
+        fit_range_max = fit_range[1]
+
+    if baseline_removal == "linear":
+        first_inflection_point = argrelmin(intensity)[0]
+        print("First inflection point", q[first_inflection_point[0]])
+        fit_range_min = q[first_inflection_point[0]]
+
+    # Find most prominent peak
+    peak_indices = find_peaks(intensity)[0]
+    prominences = peak_prominences(intensity, peak_indices)
+    # Edit this peak number
+    peak_number = np.argmax(prominences[0])
+    peak_location = q[peak_indices[peak_number]]
+    print("Peak location", peak_location)
+
+    parameters_fitting = {
+        "input_uri_reduction": reduced_uri,
+        "x_peaks": [fit_range_min, peak_location],
+        "y_peaks": [
+            intensity[np.argmin(abs(q - fit_range_min))],
+            intensity[np.argmin(abs(q - peak_location))],
+        ],
+        "stddevs": [0.00001, 0.003],
+        "fwhm_Gs": [0.001, 0.001],
+        "fwhm_Ls": [0.001, 0.001],
+        "peak_shape": "gaussian",
+        "fit_range": [fit_range_min, fit_range_max],
+        "baseline_removal": baseline_removal,
+    }
+    simple_peak_fit_tiled(**parameters_fitting)
 
 
 if __name__ == "__main__":
