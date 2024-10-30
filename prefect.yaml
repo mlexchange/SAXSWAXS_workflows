@@ -16,7 +16,7 @@ push:
 pull:
 - prefect.deployments.steps.set_working_directory:
     directory: '{{ $PREFECT_WORK_DIR }}'
-    
+
 
 # the deployments section allows you to provide configuration for deploying flows
 deployments:
@@ -94,6 +94,17 @@ deployments:
   parameters: {}
   work_pool:
     name: fitting-pool
+    work_queue_name:
+    job_variables: {}
+  schedule:
+- name: automatic_cut_and_fit
+  version:
+  tags: []
+  description:
+  entrypoint: saxswaxs_workflows/flows/pipeline.py:horizontal_cut_automatic_fit
+  parameters: {}
+  work_pool:
+    name: reduction-pool
     work_queue_name:
     job_variables: {}
   schedule:
