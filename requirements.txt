@@ -2,13 +2,14 @@ silx==1.1.2
 pyFAI==2023.9.0
 h5py==3.9.0
 fabio==2023.6.0
-numpy==1.26.1
+numpy==1.26.4
 Pillow==10.0.1
-scipy==1.11.3
+scipy==1.13.0
 tiled[all]==0.1.0a116
 matplotlib==3.8.0
 pyyaml==6.0.1
 python-dotenv==1.0.0
 prefect==2.13.4
 astropy==5.3.4
+BaselineRemoval==0.1.6
 gpcam==8.1.7
