@@ -23,23 +23,23 @@ logname = "data_watcher_p03"
 logger.addHandler(logging.StreamHandler())
 
 
-# parameters = JSON.load("2017-10-17-gisaxs-horizontal-cut").value
-parameters = JSON.load("2017-10-23-gisaxs-horizontal-cut").value
+# # parameters = JSON.load("2017-10-17-gisaxs-horizontal-cut").value
+# parameters = JSON.load("2017-10-23-gisaxs-horizontal-cut").value
 
 
 async def post_file_created(dataset_path):
     logger.info(dataset_path)
     input_file_uri = add_scan_tiled(dataset_path)
     input_file_uri = input_file_uri.replace(TILED_BASE_URI, "")
-    parameters["input_uri_data"] = input_file_uri
-    logger.info(f"Scheduling flows with {input_file_uri}")
-    await _schedule(
-        deployment_name="horizontal_cut_automatic_fit/automatic_cut_and_fit",
-        flow_run_name=input_file_uri,
-        parameters=parameters,
-    )
-    # also schedule latent_space_reductions
-    # await schedule_latent_space_reduction(input_file_uri)
+    # parameters["input_uri_data"] = input_file_uri
+    # logger.info(f"Scheduling flows with {input_file_uri}")
+    # await _schedule(
+    #     deployment_name="horizontal_cut_automatic_fit/automatic_cut_and_fit",
+    #     flow_run_name=input_file_uri,
+    #     parameters=parameters,
+    # )
+    # # also schedule latent_space_reductions
+    # # await schedule_latent_space_reduction(input_file_uri)
 
 
 async def watch_directory():

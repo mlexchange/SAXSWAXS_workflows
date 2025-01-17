@@ -285,7 +285,8 @@ def add_scan_tiled(scan_filepath):
         chunks=((1679,), (1475,)),
     )
 
-    if scan_filepath(".edf"):
+    # if scan_filepath(".edf"):
+    if scan_filepath.endswith(".edf"):
         metadata = parse_txt_accompanying_edf(scan_filepath)
     else:
         metadata = {}

@@ -11,5 +11,6 @@ pyyaml==6.0.1
 python-dotenv==1.0.0
 prefect==2.13.4
 astropy==5.3.4
-BaselineRemoval==0.1.6
 gpcam==8.1.7
+BaselineRemoval==0.1.6
+griffe >= 0.49.0, <1.0.0
