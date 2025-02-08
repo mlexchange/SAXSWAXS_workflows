@@ -1,3 +1,49 @@
+[project]
+name = "saxswaxs_workflows"
+version = "1.0"
+description = "Data analysis workflows for SAXS/WAXS. See README.md for details."
+authors = [
+  { name = "Wiebke Koepp", email = "wkoepp@lbl.gov" }
+]
+urls = { homepage = "https://github.com/als-computing/SAXSWAXS_workflows" }
+requires-python = ">=3.10,<=3.12"
+dependencies = [
+  "silx==1.1.2",
+  "pyFAI==2023.9.0",
+  "h5py==3.9.0",
+  "fabio==2023.6.0",
+  "numpy==1.26.1",
+  "Pillow==10.0.1",
+  "scipy==1.11.3",
+  "matplotlib==3.8.0",
+  "pyyaml==6.0.1",
+  "python-dotenv==1.0.0",
+  "astropy==5.3.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "black",
+  "flake8",
+  "isort",
+  "nbstripout",
+  "pre-commit",
+  "pre-commit-hooks",
+  "pytest"
+]
+
+prefect_tiled = [
+  "prefect==2.13.4",
+  "tiled[all]==0.1.0a116",
+]
+
+gpcam = [
+  "gpcam==8.1.7"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+
 [tool.black]
 line-length = 88
 exclude = '''
@@ -8,6 +54,7 @@ exclude = '''
   | dist
 )/
 '''
+
 [tool.isort]
 profile = "black"
 multi_line_output = 3
