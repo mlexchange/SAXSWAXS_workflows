@@ -9,8 +9,19 @@ git clone git@github.com:als-computing/SAXSWAXS_workflows.git
 cd SAXSWAXS_workflows
 python -m venv saxswaxs-workflows-env
 source saxswaxs-workflows-env/bin/activate
-pip install -r requirements.txt
+pip install .
 ```
+
+If you are using this in a prefect and tiled environment, also run (quotes are required for zsh):
+```bash
+pip install '.[prefect_tiled]'
+```
+
+If you are using this in a development environment, also run:
+```bash
+pip install '.[dev]'
+```
+
 
 The command `source saxswaxs-workflows-env/bin/activate` may need to be adapted for the specific operating system, see the [venv](https://docs.python.org/3/library/venv.html) documentation
 
