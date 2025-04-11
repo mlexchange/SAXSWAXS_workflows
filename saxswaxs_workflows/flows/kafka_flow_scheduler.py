@@ -19,7 +19,10 @@ logger.addHandler(logging.StreamHandler())
 
 
 parameters = JSON.load("2017-10-31-gisaxs-horizontal-cut").value
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "new_scan_entry")
+KAFKA_BOOTSTRAP_SERVER = os.getenv(
+    "KAFKA_BOOTSTRAP_SERVER", "localhost:9092"
+)  # kafka port
 
 
 consumer = KafkaConsumer(
