@@ -373,6 +373,8 @@ def reduction_tiled_wrapper(
 
     logger.debug(f"Saving {function_to_wrap.name} reduction for: {input_uri_data}")
 
+    # Add back input_uri_mask to function_parameters so that it gets stored in metadata
+    function_parameters["input_uri_mask"] = input_uri_mask
     result_uri = write_1d_reduction_result(
         input_uri_data,
         function_to_wrap.name,
