@@ -9,9 +9,10 @@ from file_handling import (
     write_fitting_fio,
     write_fitting_tiled,
 )
+from pybaselines import Baseline
 from scipy.signal import argrelmin, find_peaks, peak_prominences
 
-from prefect import flow, task
+from prefect import flow, get_run_logger, task
 
 
 @task
@@ -44,15 +45,13 @@ def _fit_gaussian(x_data, y_data, x_peaks, y_peaks, stddevs):
     for ii, (x_peak, y_peak, stddev) in enumerate(zip(x_peaks, y_peaks, stddevs)):
         if ii == 0:
             g = models.Gaussian1D(amplitude=y_peak, mean=x_peak, stddev=stddev)
-            # Restrict peak at minimum
-            g.mean.max = np.min(x_data)
-            # Restrict ampliture to be positive
+            # Restrict amplitude to be positive
             g.amplitude.min = 0
             sum_models = g
         else:
             g = models.Gaussian1D(amplitude=y_peak, mean=x_peak, stddev=stddev)
             sum_models += g
-            # Restrict ampliture to be positive
+            # Restrict amplitude to be positive
             g.amplitude.min = 0
         partial_fits.append(g)
     fitter = fitting.LevMarLSQFitter()
@@ -145,6 +144,39 @@ def _get_voigt_params(fitted_model):
     return fitted_x_peaks, fitted_y_peaks, fitted_fwhm
 
 
+@task(name="baseline_removal")
+def baseline_removal(x_data, y_data, baseline_removal_method="linear"):
+    # Adaptive iteratively reweighted penalized least squares (airPLS) baseline.
+    if baseline_removal_method == "airpls":
+        baseline_removal_obj = Baseline(y_data)
+        background, _ = baseline_removal_obj.airpls()
+    elif baseline_removal_method == "linear_to_inflection":
+        # FIt and subtract a linear baseline to the first inflection point
+        first_inflection_point = argrelmin(y_data)[0]
+        slope = (y_data[first_inflection_point[0]] - y_data[0]) / (
+            x_data[first_inflection_point[0]] - x_data[0]
+        )
+        intercept = y_data[0] - slope * x_data[0]
+        y_data = y_data - (x_data * slope + intercept)
+    # modified polynomial (ModPoly) baseline algorithm
+    elif baseline_removal_method == "modpoly":
+        baseline_removal_obj = Baseline(y_data)
+        background = baseline_removal_obj.modpoly()
+        y_data = y_data - background
+    # Statistics-sensitive Non-linear Iterative Peak-clipping (SNIP).
+    elif baseline_removal_method == "snip":
+        baseline_removal_obj = Baseline(y_data)
+        background = baseline_removal_obj.snip()
+        y_data = y_data - background
+    else:
+        logger = get_run_logger()
+        logger.debug(
+            f"Baseline removal method {baseline_removal_method} not recognized. No baseline removal applied."
+        )
+
+    return y_data
+
+
 @flow(name="simple_peak_fit")
 def simple_peak_fit(
     x_data, y_data, x_peaks, y_peaks, stddevs, fwhm_Gs, fwhm_Ls, peak_shape
@@ -186,11 +218,8 @@ def simple_peak_fit_tiled(
     fwhm_Ls,
     peak_shape,
     fit_range=None,
-    baseline_removal="linear",
 ):
-    x_data, y_data = read_reduction_tiled(
-        input_uri_reduction, fit_range, baseline_removal
-    )
+    x_data, y_data = read_reduction_tiled(input_uri_reduction, q_range=fit_range)
 
     fitted_x_peaks, fitted_y_peaks, fitted_fwhms = simple_peak_fit(
         x_data, y_data, x_peaks, y_peaks, stddevs, fwhm_Gs, fwhm_Ls, peak_shape
@@ -205,9 +234,8 @@ def simple_peak_fit_tiled(
 def automatic_peak_fit_tiled(
     input_uri_data,
     reduction_type,
-    q_target=2 * np.pi / (30) * 0.1,
     fit_range=None,
-    baseline_removal=None,
+    baseline_removal_method=None,
 ):
     reduced_uri = input_uri_data.replace("raw", "processed")
     parts = reduced_uri.split("/")
@@ -216,8 +244,7 @@ def automatic_peak_fit_tiled(
 
     q, intensity = read_reduction_tiled(
         reduced_uri,
-        fit_range=fit_range,
-        baseline_removal=None,
+        q_range=fit_range,
     )
 
     if fit_range is None:
@@ -227,10 +254,7 @@ def automatic_peak_fit_tiled(
         fit_range_min = fit_range[0]
         fit_range_max = fit_range[1]
 
-    if baseline_removal == "linear":
-        first_inflection_point = argrelmin(intensity)[0]
-        print("First inflection point", q[first_inflection_point[0]])
-        fit_range_min = q[first_inflection_point[0]]
+    intensity = baseline_removal(q, intensity, baseline_removal_method)
 
     # Find most prominent peak
     peak_indices = find_peaks(intensity)[0]

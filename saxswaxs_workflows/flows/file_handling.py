@@ -7,7 +7,6 @@ import fabio
 import h5py
 import numpy as np
 import pandas as pd
-from BaselineRemoval import BaselineRemoval
 from dotenv import load_dotenv
 from prefect.tasks import task_input_hash
 from tiled.adapters.csv import read_csv
@@ -533,32 +532,16 @@ def read_reduction(input_file_path):
     return x_data, y_data
 
 
-def read_reduction_tiled(reduction_uri, fit_range=None, baseline_removal=True):
+def read_reduction_tiled(reduction_uri, q_range=None):
     reduction_client = from_uri(TILED_BASE_URI + reduction_uri)
     x_data = reduction_client["q"][:]
     y_data = reduction_client["intensity"][:]
 
-    # Filter x_data and y_data to the fit_range
-    if fit_range is not None and len(fit_range) == 2:
-        within_range = (x_data >= fit_range[0]) & (x_data <= fit_range[1])
+    # Filter x_data and y_data to the specified q_range
+    if q_range is not None and len(q_range) == 2:
+        within_range = (x_data >= q_range[0]) & (x_data <= q_range[1])
         x_data = x_data[within_range]
         y_data = y_data[within_range]
-
-    if baseline_removal is not None:
-        if baseline_removal == "zhang":
-            baseline_correction_obj = BaselineRemoval(y_data)
-            y_data = baseline_correction_obj.ZhangFit()
-        elif baseline_removal == "modpoly":
-            baseline_correction_obj = BaselineRemoval(y_data)
-            y_data = baseline_correction_obj.ModPoly(2)
-        elif baseline_removal == "linear":
-            slope = (y_data[-1] - y_data[0]) / (x_data[-1] - x_data[0])
-            intercept = y_data[0] - slope * x_data[0]
-            # Subtract line
-            y_data = y_data - (x_data * slope + intercept)
-
-    # Normalize y_data
-    # y_data = (y_data - np.min(y_data)) / (np.max(y_data) - np.min(y_data))
 
     return x_data, y_data
 
