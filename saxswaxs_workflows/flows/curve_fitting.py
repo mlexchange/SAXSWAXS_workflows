@@ -144,6 +144,68 @@ def _get_voigt_params(fitted_model):
     return fitted_x_peaks, fitted_y_peaks, fitted_fwhm
 
 
+def iterative_background_subtraction(intensity, shift_width=2, iterations=10000):
+    """
+    Perform iterative background subtraction on a 1D intensity array.
+
+    This function creates multiple shifted versions of the intensity array over a
+    specified 'shift_width', calculates their average, and then replaces any value in
+    the original array that is greater than this average with the average value.
+    This process is repeated for a specified number of iterations.
+
+    Parameters
+    ----------
+    intensity : np.ndarray
+        The raw intensity data array.
+    shift_width : int, optional
+        The maximum shift used for creating shifted versions of the array. For example,
+        if shift_width=2, the function will create arrays shifted by -2, -1, 0, 1, and 2.
+        (Default is 2.)
+    iterations : int, optional
+        The number of iterations to perform (default is 100000).
+
+    Returns
+    -------
+    np.ndarray
+        The background (or baseline) estimate obtained from the iterative subtraction.
+    """
+    # Create a working copy of the intensity array and add a small offset
+    # to avoid potential issues with zeros or negative values.
+    corrected_intensity = intensity * 1.0
+
+    for _ in range(iterations):
+        # Build a list of arrays to average: the unshifted array plus all shifts
+        arrays_to_average = []
+
+        # Create shifted arrays from -shift_width to +shift_width, excluding 0.
+        for shift in range(1, shift_width + 1):
+            # Shift to the left by 'shift'
+            shifted_left = np.roll(corrected_intensity, shift=shift)
+            # Correct the first 'shift' elements that got rolled from the end
+            shifted_left[:shift] = corrected_intensity[:shift]
+            arrays_to_average.append(shifted_left)
+
+            # Shift to the right by 'shift'
+            shifted_right = np.roll(corrected_intensity, shift=-shift)
+            # Correct the last 'shift' elements that got rolled from the beginning
+            shifted_right[-shift:] = corrected_intensity[-shift:]
+            arrays_to_average.append(shifted_right)
+
+        # Compute the mean across all shifted versions
+        average_array = np.mean(arrays_to_average, axis=0)
+
+        # Optionally preserve the first/last few points to avoid edge artifacts
+        # (For example, you might do this):
+        average_array[:shift_width] = corrected_intensity[:shift_width]
+        average_array[-shift_width:] = corrected_intensity[-shift_width:]
+
+        # Replace points that are above the average with the average
+        mask = corrected_intensity > average_array
+        corrected_intensity[mask] = average_array[mask]
+
+    return corrected_intensity
+
+
 @flow(name="baseline_removal")
 def baseline_removal(x_data, y_data, baseline_removal_method="linear"):
     y_data = np.copy(y_data)
@@ -172,6 +234,12 @@ def baseline_removal(x_data, y_data, baseline_removal_method="linear"):
     elif baseline_removal_method == "snip":
         baseline_removal_obj = Baseline(x_data=y_data)
         background, _ = baseline_removal_obj.snip()
+    elif baseline_removal_method == "rolling_window":
+        background = iterative_background_subtraction(y_data, shift_width=15)
+    elif baseline_removal_method == "rolling_window_log":
+        background = np.exp(
+            iterative_background_subtraction(np.log(y_data), shift_width=15)
+        )
     else:
         logger = get_run_logger()
         logger.debug(
