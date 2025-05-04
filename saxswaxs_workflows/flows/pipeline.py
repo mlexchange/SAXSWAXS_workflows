@@ -68,7 +68,7 @@ def horizontal_cut_automatic_fit(
     x_max: int,
     output_unit: str,
     fit_range=[0.005, 0.035],
-    baseline_removal="zhang",
+    baseline_removal_method="zhang",
 ):
     parameters = locals().copy()
 
@@ -118,20 +118,20 @@ if __name__ == "__main__":
     # two_step_pipeline(**parameters)
 
     parameters = {
-        "input_uri_data": "raw/2024_10_23/New_Batch/Data__B2_2_A0p120_sfloat_2m",
-        "input_uri_mask": "processed/masks/2024_10_17_GISAXS_YW_inverted",
-        "beamcenter_x": 691.007,
-        "beamcenter_y": 1281.21,
-        "incident_angle": 0.12,
-        "sample_detector_dist": 3590.48,
+        "input_uri_data": "raw/ALS-S2VP42/220_A0p160_A0p160_sfloat_2m",
+        "input_uri_mask": "processed/masks/ALS_BCP_Mixing_2m_mask_inverted",
+        "beamcenter_x": 670.976,
+        "beamcenter_y": 1180.42,
         "wavelength": 1.2398,
+        "sample_detector_dist": 3513.21,
         "pix_size": 172,
+        "incident_angle": 0.16,
         "cut_half_width": 5,
-        "cut_pos_y": 1176,
+        "cut_pos_y": 1080,
         "x_min": 391,
         "x_max": 991,
         "output_unit": "q",
         "fit_range": [0.005, 0.035],
-        "baseline_removal": "zhang",
+        "baseline_removal_method": "linear_to_inflection",
     }
     horizontal_cut_automatic_fit(**parameters)

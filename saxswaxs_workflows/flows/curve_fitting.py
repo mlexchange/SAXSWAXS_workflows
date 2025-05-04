@@ -10,7 +10,7 @@ from file_handling import (
     write_fitting_tiled,
 )
 from pybaselines import Baseline
-from scipy.signal import argrelmin, find_peaks, peak_prominences
+from scipy.signal import argrelmin, find_peaks
 
 from prefect import flow, get_run_logger, task
 
@@ -144,37 +144,43 @@ def _get_voigt_params(fitted_model):
     return fitted_x_peaks, fitted_y_peaks, fitted_fwhm
 
 
-@task(name="baseline_removal")
+@flow(name="baseline_removal")
 def baseline_removal(x_data, y_data, baseline_removal_method="linear"):
+    y_data = np.copy(y_data)
+    logger = get_run_logger()
     # Adaptive iteratively reweighted penalized least squares (airPLS) baseline.
     if baseline_removal_method == "airpls":
-        baseline_removal_obj = Baseline(y_data)
+        baseline_removal_obj = Baseline(x_data=y_data)
         background, _ = baseline_removal_obj.airpls()
+    # Fit and subtract a linear baseline to the first inflection point
     elif baseline_removal_method == "linear_to_inflection":
-        # FIt and subtract a linear baseline to the first inflection point
         first_inflection_point = argrelmin(y_data)[0]
+        logger.info(
+            f"Found first inflection point at {x_data[first_inflection_point[0]]}."
+        )
         slope = (y_data[first_inflection_point[0]] - y_data[0]) / (
             x_data[first_inflection_point[0]] - x_data[0]
         )
         intercept = y_data[0] - slope * x_data[0]
-        y_data = y_data - (x_data * slope + intercept)
+        logger.info(f"Linear baseline slope: {slope}, intercept: {intercept}.")
+        background = slope * x_data + intercept
     # modified polynomial (ModPoly) baseline algorithm
     elif baseline_removal_method == "modpoly":
-        baseline_removal_obj = Baseline(y_data)
-        background = baseline_removal_obj.modpoly()
-        y_data = y_data - background
+        baseline_removal_obj = Baseline(x_data=y_data)
+        background, _ = baseline_removal_obj.modpoly()
     # Statistics-sensitive Non-linear Iterative Peak-clipping (SNIP).
     elif baseline_removal_method == "snip":
-        baseline_removal_obj = Baseline(y_data)
-        background = baseline_removal_obj.snip()
-        y_data = y_data - background
+        baseline_removal_obj = Baseline(x_data=y_data)
+        background, _ = baseline_removal_obj.snip()
     else:
         logger = get_run_logger()
         logger.debug(
             f"Baseline removal method {baseline_removal_method} not recognized. No baseline removal applied."
         )
+        background = np.zeros_like(y_data)
 
-    return y_data
+    y_data -= background
+    return y_data, background
 
 
 @flow(name="simple_peak_fit")
@@ -236,49 +242,70 @@ def automatic_peak_fit_tiled(
     reduction_type,
     fit_range=None,
     baseline_removal_method=None,
+    peak_prominence=1,
+    max_num_peaks=3,
 ):
+    logger = get_run_logger()
+
     reduced_uri = input_uri_data.replace("raw", "processed")
     parts = reduced_uri.split("/")
     reduced_uri = f"{reduced_uri}/{parts[-1]}_{reduction_type}"
-    print(reduced_uri)
+    logger.info(f"Peak fitting {reduced_uri}")
 
     q, intensity = read_reduction_tiled(
         reduced_uri,
         q_range=fit_range,
     )
 
-    if fit_range is None:
-        fit_range_min = np.min(q)
-        fit_range_max = np.max(q)
-    else:
-        fit_range_min = fit_range[0]
-        fit_range_max = fit_range[1]
+    # Background removal
+    intensity, background = baseline_removal(q, intensity, baseline_removal_method)
 
-    intensity = baseline_removal(q, intensity, baseline_removal_method)
+    # Find all peaks in the data
+    peak_indices, peak_parameters = find_peaks(intensity, prominence=peak_prominence)
 
-    # Find most prominent peak
-    peak_indices = find_peaks(intensity)[0]
-    prominences = peak_prominences(intensity, peak_indices)
-    # Edit this peak number
-    peak_number = np.argmax(prominences[0])
-    peak_location = q[peak_indices[peak_number]]
-    print("Peak location", peak_location)
+    # Having given the prominence keywork to find_peaks, we can extract the prominence values
+    prominences = peak_parameters["prominences"]
+    right_bases = peak_parameters["right_bases"]
+    left_bases = peak_parameters["left_bases"]
 
-    parameters_fitting = {
-        "input_uri_reduction": reduced_uri,
-        "x_peaks": [fit_range_min, peak_location],
-        "y_peaks": [
-            intensity[np.argmin(abs(q - fit_range_min))],
-            intensity[np.argmin(abs(q - peak_location))],
-        ],
-        "stddevs": [0.00001, 0.003],
-        "fwhm_Gs": [0.001, 0.001],
-        "fwhm_Ls": [0.001, 0.001],
-        "peak_shape": "gaussian",
-        "fit_range": [fit_range_min, fit_range_max],
-        "baseline_removal": baseline_removal,
-    }
-    simple_peak_fit_tiled(**parameters_fitting)
+    num_peaks = len(peak_indices)
+    if num_peaks == 0:
+        logger.info("No peaks found in the specified range.")
+        return
+
+    if max_num_peaks > num_peaks:
+        max_num_peaks = num_peaks
+        logger.info(
+            f"Only {num_peaks} peaks found, adjusting max_num_peaks to {max_num_peaks}."
+        )
+
+    # Select the peaks with the highest prominence
+    sorted_peak_indices = np.argsort(prominences)[-max_num_peaks:]
+    peak_indices = peak_indices[sorted_peak_indices]
+    prominences = prominences[sorted_peak_indices]
+    left_bases = left_bases[sorted_peak_indices]
+    right_bases = right_bases[sorted_peak_indices]
+
+    x_peaks = q[peak_indices]
+    y_peaks = intensity[peak_indices]
+    stddevs = np.zeros_like(x_peaks)
+    fwhm_Gs = np.zeros_like(x_peaks)
+    fwhm_Ls = np.zeros_like(x_peaks)
+
+    for idx, peak_idx in enumerate(peak_indices):
+        peak_width = q[right_bases[idx]] - q[left_bases[idx]]
+
+        # Assuming the peak widths covers approximately -3/+3 standard deviations
+        stddevs[idx] = peak_width / 6
+        # Estimate FWHM from standard deviation
+        fwhm_Gs[idx] = 2 * stddevs[idx] * math.sqrt(2 * math.log(2))
+        fwhm_Ls[idx] = fwhm_Gs[idx]
+
+    fitted_x_peaks, fitted_y_peaks, fitted_fwhms = simple_peak_fit(
+        q, intensity, x_peaks, y_peaks, stddevs, fwhm_Gs, fwhm_Ls, "gaussian"
+    )
+
+    write_fitting_tiled(reduced_uri, fitted_x_peaks, fitted_y_peaks, fitted_fwhms)
 
 
 if __name__ == "__main__":
