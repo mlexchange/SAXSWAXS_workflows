@@ -3,13 +3,13 @@ import time
 
 import numpy as np
 from astropy.modeling import fitting, models
+from BaselineRemoval import BaselineRemoval
 from file_handling import (
     read_reduction,
     read_reduction_tiled,
     write_fitting_fio,
     write_fitting_tiled,
 )
-from pybaselines import Baseline
 from scipy.signal import argrelmin, find_peaks
 
 from prefect import flow, get_run_logger, task
@@ -208,12 +208,12 @@ def iterative_background_subtraction(intensity, shift_width=2, iterations=10000)
 
 @flow(name="baseline_removal")
 def baseline_removal(x_data, y_data, baseline_removal_method="linear"):
-    y_data = np.copy(y_data)
     logger = get_run_logger()
-    # Adaptive iteratively reweighted penalized least squares (airPLS) baseline.
-    if baseline_removal_method == "airpls":
-        baseline_removal_obj = Baseline(x_data=y_data)
-        background, _ = baseline_removal_obj.airpls()
+    y_data = np.copy(y_data)
+    if baseline_removal_method == "zhang":
+        baseline_correction_obj = BaselineRemoval(y_data)
+        y_baseline_removed = baseline_correction_obj.ZhangFit()
+        background = y_data - y_baseline_removed
     # Fit and subtract a linear baseline to the first inflection point
     elif baseline_removal_method == "linear_to_inflection":
         first_inflection_point = argrelmin(y_data)[0]
@@ -228,12 +228,9 @@ def baseline_removal(x_data, y_data, baseline_removal_method="linear"):
         background = slope * x_data + intercept
     # modified polynomial (ModPoly) baseline algorithm
     elif baseline_removal_method == "modpoly":
-        baseline_removal_obj = Baseline(x_data=y_data)
-        background, _ = baseline_removal_obj.modpoly()
-    # Statistics-sensitive Non-linear Iterative Peak-clipping (SNIP).
-    elif baseline_removal_method == "snip":
-        baseline_removal_obj = Baseline(x_data=y_data)
-        background, _ = baseline_removal_obj.snip()
+        baseline_correction_obj = BaselineRemoval(y_data)
+        y_baseline_removed = baseline_correction_obj.ModPoly(3)
+        background = y_data - y_baseline_removed
     elif baseline_removal_method == "rolling_window":
         background = iterative_background_subtraction(y_data, shift_width=15)
     elif baseline_removal_method == "rolling_window_log":

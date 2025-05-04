@@ -68,7 +68,9 @@ def horizontal_cut_automatic_fit(
     x_max: int,
     output_unit: str,
     fit_range=[0.005, 0.035],
-    baseline_removal_method="zhang",
+    baseline_removal_method="rolling_window",
+    peak_prominence: float = 1,
+    max_num_peaks: int = 3,
 ):
     parameters = locals().copy()
 
