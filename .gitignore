@@ -169,3 +169,6 @@ prefect/prefect.db
 prefect/prefect.db-shm
 prefect/prefect.db-wal
 plots/
+
+# gpcam results
+*.h5

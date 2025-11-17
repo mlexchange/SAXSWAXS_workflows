@@ -26,7 +26,7 @@ consumer = KafkaConsumer(
 
 # ZMQ Sender
 ZMQ_PORT = os.getenv("ZMQ_PORT", "5001")
-ZMQ_HOST = os.getenv("ZMQ_HOST", "localhost")
+ZMQ_HOST = os.getenv("ZMQ_HOST", "127.0.0.1")
 # Creates a socket instance
 context = zmq.Context()
 # Create sockets for sending messages and receiving messages
@@ -38,11 +38,20 @@ print("Created publisher socket on port %s" % ZMQ_PORT)
 # Tiled client for accessing data
 TILED_API_KEY = os.getenv("TILED_API_KEY")
 
+# Initialize the Tiled server
+TILED_URI = os.getenv("TILED_URI", "http://127.0.0.1:8888")
+
+try:
+    client = from_uri(TILED_URI, api_key=TILED_API_KEY)
+    TILED_BASE_URI = client.uri
+except Exception as e:
+    print(e)
+
 
 # Extraction of information from a message for a very specific experiment
 def extract_info_from_result_message(message):
     scan_uri = message.get("scan_uri")
-    scan_client = from_uri(scan_uri, api_key=TILED_API_KEY)
+    scan_client = from_uri(TILED_BASE_URI+scan_uri, api_key=TILED_API_KEY)
     metadata = scan_client.metadata
     motor1_position = metadata["Sample X Stage"]
     motor2_position = metadata["Sample Y Stage"]
@@ -50,7 +59,7 @@ def extract_info_from_result_message(message):
     reduced_uri = scan_uri.replace("raw", "processed")
     parts = reduced_uri.split("/")
     reduced_uri = f"{reduced_uri}/{parts[-1]}_integration-azimuthal"
-    reduced_client = from_uri(reduced_uri, api_key=TILED_API_KEY)
+    reduced_client = from_uri(TILED_BASE_URI+reduced_uri, api_key=TILED_API_KEY)
 
     q = reduced_client["q"].read()
     intensity = reduced_client["intensity"].read()
@@ -165,7 +174,7 @@ def gp_optimizer(
     # Set up hyperparameters for kernel
     # first: signal variance, length scale in each parameter
     # These we might need to update, based on the data
-    hps_bounds = np.array([[0.0001, 10000.0], [0.01, 100.0], [0.01, 100]])
+    hps_bounds = np.array([[0.0001, 100.0], [0.01, 100.0], [0.01, 100]])
 
     # x_data may be overwritten
     x_data, y_data = instrument(x_data=x_init)
