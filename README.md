@@ -1,8 +1,27 @@
 # SAXS/WAXS Analysis Workflows
 
-Data analysis workflows for SAXS/WAXS
+A collection of Prefect workflows for data reduction and feature extraction in SAXS/WAXS experiments.
 
-## Clone repository and setup Python environment
+This repository provides the execution and orchestration layer for modular data-processing workflows
+used in near–real-time and autonomous scattering experiments.
+
+## Software architecture
+
+This repository defines Prefect workflows composed of modular tasks for data reduction and feature
+extraction. Experimental data and intermediate results are accessed through **Tiled**, while
+execution is orchestrated using **Prefect** for consistent runs across local workstations and
+central compute resources.
+
+## Relationship to workflow-viz
+
+The workflows defined here can be executed and validated through the Dash-based user interface provided
+by workflow-viz: <https://github.com/mlexchange/workflow-viz>
+
+The same Prefect tasks and workflows are used during interactive configuration, near–real-time
+processing, and autonomous operation, ensuring that validated parameters are directly transferable
+between modes.
+
+## Initial setup: Clone the repository and create an environment
 
 ```bash
 git clone git@github.com:als-computing/SAXSWAXS_workflows.git
@@ -12,30 +31,27 @@ source saxswaxs-workflows-env/bin/activate
 pip install -r requirements.txt
 ```
 
-The command `source saxswaxs-workflows-env/bin/activate` may need to be adapted for the specific operating system, see the [venv](https://docs.python.org/3/library/venv.html) documentation
+The command `source saxswaxs-workflows-env/bin/activate` may need to be adapted for the specific operating system; see the [venv](https://docs.python.org/3/library/venv.html) documentation.
 
-## Set up environment file with relevant paths
+## Initial + beamtime setup: Configure environment
 
-Create a file `.env` with the following content
+Create a `.env` file based on the provided example:
 
 ```bash
-TILED_URI="http://127.0.0.1:8888"
-PREFECT_API_URL="http://127.0.0.1:4200/api"
-TILED_API_KEY="<randomly generated key>"
-PATH_TO_DATA="<path to folder that contains raw data>"
-PATH_TO_PROCESSED_DATA="<path to folder where processed data can be written>"
-PREFECT_WORK_DIR="<path to folder where this code resides>"
+cp .env.example .env
 ```
 
-## Prefect Server
+Edit the file to configure data paths, Tiled access, Prefect settings, and (optionally) beamline control parameters. Environment variables related to data access must be consistent with those used by `workflow-viz`.
 
-In one terminal that has the environment activated start a prefect server
+## Prefect server
+
+In one terminal with the environment activated, start a Prefect server:
 
 ```bash
 prefect server start
 ```
 
-As instructed in the Prefect server startup prompt, make sure prefect is configured with the correct `PREFECT_API_URL`:
+As instructed in the Prefect server startup prompt, make sure Prefect is configured with the correct `PREFECT_API_URL`:
 
 ```bash
 prefect config set PREFECT_API_URL=http://127.0.0.1:4200/api
@@ -43,32 +59,46 @@ prefect config set PREFECT_API_URL=http://127.0.0.1:4200/api
 
 ## Tiled server
 
-Within the interface folder (the other repository `/workflow-viz`), follow the instructions to start a Tiled server, and a Tiled watch process that observes changes in a directory
+Within the workflow-viz repository, follow the instructions to start a Tiled server and ingest raw and already present processed data.
 
 ## First test
 
-Adapt the parameters in the example in `reduction.py` to point to a dataset that is contained in the folder and run it
+Adapt the parameters in the example in `reduction.py` to point to a dataset contained in the folder and run it:
 
 ```bash
 python saxswaxs-workflows/flows/reduction.py
 ```
 
-## Setup for beamtime
+## Beamtime setup
 
-(Once we confirmed that the first part runs)
-
-In another terminal, create work-pools:, the `reduction-pool` for reducing data, the `fitting-pool` for feature extraction, and the `gpcam-pool` for running gpCAM,
-and deploy all flows that are defined within `prefect.yaml`. For convinience, these steps are summarized in the script
+Once the first part runs, in another terminal create work pools (`reduction-pool`, `fitting-pool`, and `gpcam-pool`) and deploy all flows defined in `prefect.yaml`. For convenience, these steps are summarized in the script:
 
 ```bash
 ./create_deployments.sh
 ```
 
-Finally, start the workers with
+Finally, start the workers for reduction and fitting with
 
 ```bash
 prefect worker start --pool 'reduction-pool'
 ```
+
+```bash
+prefect worker start --pool 'fitting-pool'
+```
+
+## Beamtime execution
+
+For beamtime deployments, workflows can be triggered either programmatically or through file-based
+monitoring of incoming detector data. Optional components support continuous operation and autonomous
+control via ZMQ-based messaging.
+
+The following scripts provide reference implementations of these components:
+
+- `saxswaxs_workflows/flows/file_watcher.py` — monitors `PATH_TO_DATA` for new detector files and
+  schedules the selected reduction workflow (deployment name and parameters are defined in the script).
+- `saxswaxs_workflows/flows/autonomous_zmq.py` — listens for reduction updates over ZMQ and interfaces
+  with beamline control via ZMQ, configured through `BL_SERVER` and `BL_PORT`.
 
 ## Copyright
 
